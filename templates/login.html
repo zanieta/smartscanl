@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign in · SmartScan</title>
+    <!-- Materialize -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --brand-navy: #11178C; --brand-navy-2: #2b34c9; --brand-green: #8CC63F; --brand-green-dark: #6fa72c;
+        }
+        html, body { height: 100%; }
+        body {
+            font-family: 'Manrope', system-ui, sans-serif;
+            background:
+                radial-gradient(620px 360px at 12% -8%, rgba(140,198,63,0.10), transparent 60%),
+                radial-gradient(720px 420px at 110% 110%, rgba(17,23,140,0.08), transparent 60%),
+                #f5f7fb;
+            display: flex; align-items: center; justify-content: center; padding: 1.5rem;
+        }
+        .auth-card {
+            width: 100%; max-width: 430px; border-radius: 18px; overflow: hidden;
+            box-shadow: 0 30px 60px -34px rgba(17,23,140,0.40); background: #fff;
+        }
+        /* brand header band with the logo's circuit-trace motif */
+        .auth-head {
+            position: relative; padding: 1.9rem 1.8rem 1.6rem; overflow: hidden;
+            background:
+                radial-gradient(420px 220px at 115% -20%, rgba(140,198,63,0.28), transparent 60%),
+                linear-gradient(200deg, var(--brand-navy-2) 0%, #0d1170 100%);
+        }
+        .auth-head .trace { position: absolute; inset: 0; opacity: 0.55; pointer-events: none; }
+        .auth-logo {
+            position: relative; z-index: 1; background: #fff; border-radius: 11px;
+            padding: 0.6rem 0.8rem; width: max-content; box-shadow: 0 10px 24px -14px rgba(0,0,0,0.6);
+        }
+        .auth-logo img { display: block; height: 30px; width: auto; }
+        .auth-head h1 {
+            position: relative; z-index: 1; font-family: 'Fraunces', Georgia, serif; color: #fff;
+            font-size: 1.45rem; font-weight: 600; margin: 1.1rem 0 0.25rem;
+        }
+        .auth-head p { position: relative; z-index: 1; color: rgba(238,240,251,0.72); font-size: 0.86rem; margin: 0; }
+
+        .auth-body { padding: 1.6rem 1.8rem 1.4rem; }
+        .eyebrow {
+            font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.16em;
+            color: #8a90a6; font-weight: 800; margin-bottom: 1rem;
+        }
+
+        /* brand theming over Materialize defaults */
+        .input-field .prefix.active { color: var(--brand-navy); }
+        .input-field input:focus + label { color: var(--brand-green-dark) !important; }
+        .input-field input[type=text]:focus, .input-field input[type=password]:focus {
+            border-bottom: 1px solid var(--brand-green) !important;
+            box-shadow: 0 1px 0 0 var(--brand-green) !important;
+        }
+        .input-field input { font-size: 1rem; }
+        .btn-signin {
+            width: 100%; height: 48px; line-height: 48px; border-radius: 10px;
+            background-color: var(--brand-navy); font-weight: 800; letter-spacing: 0.02em;
+            font-family: 'Manrope', sans-serif; text-transform: none; font-size: 0.98rem;
+        }
+        .btn-signin:hover, .btn-signin:focus { background-color: var(--brand-navy-2); }
+        .alert {
+            background: rgba(229,72,77,0.1); color: #c0383c; border: 1px solid rgba(229,72,77,0.25);
+            padding: 0.65rem 0.85rem; border-radius: 9px; font-size: 0.85rem; font-weight: 600; margin-bottom: 1.1rem;
+        }
+        .help { margin-top: 1.2rem; font-size: 0.78rem; color: #8a90a6; }
+        .auth-foot {
+            border-top: 1px solid #eef0f6; padding: 0.9rem 1.8rem; font-size: 0.74rem; color: #9aa0b4;
+        }
+        .auth-foot b { color: var(--brand-green-dark); }
+    </style>
+</head>
+<body>
+    <div class="auth-card">
+        <div class="auth-head">
+            <svg class="trace" viewBox="0 0 430 230" fill="none" preserveAspectRatio="xMidYMid slice">
+                <g stroke="rgba(140,198,63,0.55)" stroke-width="1.4">
+                    <path d="M30 40 H150 V120 H260"/><path d="M360 20 V90 H300"/>
+                    <path d="M40 180 H120 V140"/>
+                </g>
+                <g stroke="rgba(255,255,255,0.20)" stroke-width="1.4">
+                    <path d="M400 150 H300 V200"/><path d="M60 90 H110"/>
+                </g>
+                <g fill="#8CC63F"><circle cx="30" cy="40" r="3.5"/><circle cx="260" cy="120" r="3.5"/><circle cx="360" cy="20" r="3.5"/></g>
+                <g fill="#ffffff" fill-opacity="0.5"><circle cx="120" cy="140" r="3"/><circle cx="300" cy="200" r="3"/></g>
+            </svg>
+            <div class="auth-logo"><img src="/static/logo.png" alt="DEWEBNET Solution"></div>
+            <h1>Welcome back</h1>
+            <p>Sign in to the SmartScan security console.</p>
+        </div>
+
+        <div class="auth-body">
+            <div class="eyebrow">Security Operations Console</div>
+            {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+            <form method="post" action="/login">
+                <input type="hidden" name="next" value="{{ next }}">
+                <div class="input-field">
+                    <i class="material-icons prefix">person_outline</i>
+                    <input id="username" name="username" type="text" autocomplete="username" required>
+                    <label for="username">Username</label>
+                </div>
+                <div class="input-field">
+                    <i class="material-icons prefix">lock_outline</i>
+                    <input id="password" name="password" type="password" autocomplete="current-password" required>
+                    <label for="password">Password</label>
+                </div>
+                <button type="submit" class="btn btn-signin waves-effect waves-light">Sign in</button>
+            </form>
+            <div class="help">Accounts are issued by your administrator.</div>
+        </div>
+
+        <div class="auth-foot">SmartScan · Powered by <b>DEWEBNET Solution</b></div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+    <script>document.addEventListener('DOMContentLoaded', () => { M.updateTextFields(); document.getElementById('username').focus(); });</script>
+</body>
+</html>

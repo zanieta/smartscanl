@@ -1,0 +1,22 @@
+{% extends "auth_base.html" %}
+
+{% block title %}Two-factor{% endblock %}
+{% block heading %}Verify it's you{% endblock %}
+{% block subheading %}Enter the code from your authenticator app.{% endblock %}
+{% block eyebrow %}Signed in as {{ username }}{% endblock %}
+
+{% block body %}
+    <form method="post" action="/2fa/verify">
+        <input id="code" name="code" type="text" class="code-input" inputmode="numeric"
+               autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6"
+               placeholder="000000" required autofocus>
+        <button type="submit" class="btn btn-signin waves-effect waves-light" style="margin-top:1.4rem">
+            Verify
+        </button>
+    </form>
+
+    <div class="help">
+        Codes change every 30 seconds. If yours keeps failing, check that your phone's
+        clock is set automatically. <a href="/logout" style="color:var(--brand-navy);font-weight:700">Sign in as someone else</a>.
+    </div>
+{% endblock %}

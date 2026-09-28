@@ -1,0 +1,32 @@
+{% extends "auth_base.html" %}
+
+{% block title %}Set up two-factor{% endblock %}
+{% block heading %}Secure your account{% endblock %}
+{% block subheading %}Two-factor authentication is required for {{ username }}.{% endblock %}
+{% block eyebrow %}Step 1 of 1 · Enrollment{% endblock %}
+
+{% block body %}
+    <ol class="steps-list">
+        <li>Open an authenticator app (Google Authenticator, Microsoft Authenticator, Aegis, 1Password).</li>
+        <li>Scan the code below, or enter the setup key by hand.</li>
+        <li>Type the six-digit code it shows to confirm.</li>
+    </ol>
+
+    <div class="qr-wrap">{{ qr_svg|safe }}</div>
+
+    <div class="secret-box" title="Setup key for manual entry">{{ secret }}</div>
+
+    <form method="post" action="/2fa/enroll" style="margin-top:1.3rem">
+        <input id="code" name="code" type="text" class="code-input" inputmode="numeric"
+               autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6"
+               placeholder="000000" required>
+        <button type="submit" class="btn btn-signin waves-effect waves-light" style="margin-top:1.2rem">
+            Confirm and continue
+        </button>
+    </form>
+
+    <div class="help">
+        This code is not saved until you confirm it, so a mistyped scan can't lock you out.
+        Lost your device later? An administrator can reset your two-factor setup.
+    </div>
+{% endblock %}

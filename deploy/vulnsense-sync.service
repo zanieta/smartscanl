@@ -1,0 +1,11 @@
+[Unit]
+Description=VulnSense weekly incremental NVD sync
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=vulnsense
+WorkingDirectory=/opt/vulnsense
+EnvironmentFile=/opt/vulnsense/.env
+ExecStart=/opt/vulnsense/.venv/bin/python -m scripts.update_cves

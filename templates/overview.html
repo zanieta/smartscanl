@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block style %}
+    .tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1rem; margin-bottom: 1.8rem; }
+    @media (max-width: 1040px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 560px) { .tiles { grid-template-columns: 1fr; } }
+    .tile {
+        border-radius: var(--radius);
+        padding: 1.15rem 1.25rem 1.2rem;
+        color: #fff;
+        position: relative;
+        overflow: hidden;
+        min-height: 116px;
+        display: flex; flex-direction: column; justify-content: space-between;
+        box-shadow: var(--shadow);
+    }
+    .tile .t-label { font-size: 0.82rem; font-weight: 700; letter-spacing: 0.01em; opacity: 0.95; }
+    .tile .t-num { font-family: 'Fraunces', serif; font-size: 2.7rem; font-weight: 600; line-height: 1; }
+    .tile.t-critical { background: linear-gradient(160deg, #8b4bf0, #6d28d9); }
+    .tile.t-high { background: linear-gradient(160deg, #ef5a5f, #d83a3f); }
+    .tile.t-medium { background: linear-gradient(160deg, #fb7a1e, #e85d04); }
+    .tile.t-low { background: linear-gradient(160deg, #ecc02a, #d4a017); color: #3a2f00; }
+    .tile.t-accepted { background: linear-gradient(160deg, #3cb179, #239d63); }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; align-items: start; }
+    @media (max-width: 980px) { .grid-2 { grid-template-columns: 1fr; } }
+
+    .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
+    .panel-head .link { font-size: 0.78rem; font-weight: 700; color: var(--brand-navy); text-decoration: none; }
+    .panel-head .link:hover { color: var(--brand-navy-light); }
+
+    .rows { display: flex; flex-direction: column; }
+    .row {
+        display: flex; align-items: center; gap: 0.9rem;
+        padding: 0.85rem 0.25rem; border-bottom: 1px solid var(--border);
+        text-decoration: none; color: inherit;
+    }
+    .row:last-child { border-bottom: none; }
+    .row:hover { background: var(--surface-hover); border-radius: 8px; }
+    .row .eyebrow { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); font-weight: 700; }
+    .row .title { font-size: 0.9rem; font-weight: 600; color: var(--text); }
+    .row .meta { font-size: 0.76rem; color: var(--text-muted); }
+    .row .right { margin-left: auto; text-align: right; }
+    .type-chip {
+        font-size: 0.64rem; font-weight: 800; letter-spacing: 0.05em; padding: 0.18rem 0.45rem;
+        border-radius: 6px; flex: none;
+    }
+    .type-pc { background: rgba(17,23,140,0.1); color: var(--brand-navy); }
+    .type-web { background: rgba(140,198,63,0.18); color: var(--brand-green-dark); }
+    .client-chip { font-size: 0.62rem; font-weight: 800; letter-spacing: 0.03em; padding: 0.16rem 0.45rem; border-radius: 6px; background: rgba(17,23,140,0.07); color: var(--brand-navy); }
+
+    .client-board { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.9rem; margin-top: 0.4rem; }
+    .client-card {
+        border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 1rem 1.1rem;
+        text-decoration: none; color: inherit; transition: border-color 0.15s, box-shadow 0.15s; position: relative;
+    }
+    .client-card:hover { border-color: var(--brand-green); box-shadow: var(--shadow-sm); }
+    .client-card .cc-name { font-weight: 700; color: var(--text); font-size: 0.95rem; }
+    .client-card .cc-scans { font-family: 'Fraunces', serif; font-size: 1.7rem; font-weight: 600; color: var(--brand-navy); line-height: 1; margin: 0.5rem 0 0.1rem; }
+    .client-card .cc-sub { font-size: 0.73rem; color: var(--text-muted); }
+    .client-card .cc-sev { display: flex; gap: 0.4rem; margin-top: 0.7rem; }
+{% endblock %}
+
+{% block body %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Dashboard</h1>
+        <div class="page-sub">Risks detected across all scans &nbsp;·&nbsp; <span id="total-label">0 total</span></div>
+    </div>
+    <div style="display:flex; gap:0.6rem;">
+        <a href="/pc" class="btn btn-ghost">+ PC Scan</a>
+        <a href="/web" class="btn">+ Web Scan</a>
+    </div>
+</div>
+
+<div class="tiles">
+    <div class="tile t-critical"><span class="t-label">Critical</span><span class="t-num" id="c-critical">0</span></div>
+    <div class="tile t-high"><span class="t-label">High</span><span class="t-num" id="c-high">0</span></div>
+    <div class="tile t-medium"><span class="t-label">Medium</span><span class="t-num" id="c-medium">0</span></div>
+    <div class="tile t-low"><span class="t-label">Low</span><span class="t-num" id="c-low">0</span></div>
+    <div class="tile t-accepted"><span class="t-label">Accepted</span><span class="t-num" id="c-accepted">0</span></div>
+</div>
+
+<div class="grid-2">
+    <section class="card card-pad">
+        <div class="panel-head">
+            <h2 class="section" style="margin-bottom:0;">Recent Scans</h2>
+            <a href="/reports" class="link">See all &rsaquo;</a>
+        </div>
+        <div class="rows" id="recent-scans"></div>
+    </section>
+
+    <section class="card card-pad">
+        <div class="panel-head">
+            <h2 class="section" style="margin-bottom:0;">Recent Risks</h2>
+            <a href="/risks" class="link">See all &rsaquo;</a>
+        </div>
+        <div class="rows" id="recent-risks"></div>
+    </section>
+</div>
+
+<section class="card card-pad" style="margin-top:1.25rem;">
+    <div class="panel-head">
+        <h2 class="section" style="margin-bottom:0;">Scans by Client</h2>
+        {% if user and user.role == 'admin' %}<a href="/clients" class="link">Manage clients &rsaquo;</a>{% endif %}
+    </div>
+    <div class="client-board" id="client-board"></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/app.js"></script>
+<script>
+(async function () {
+    const scans = await VulnSense.loadAllScans();
+    const sev = VulnSense.tally(scans);
+    // Recent risks = open findings only (accepted ones drop out of the list)
+    const risks = [];
+    scans.forEach(s => (s.findings || []).forEach(f => { if (!VulnSense.isAccepted(f)) risks.push({ scan: s, finding: f }); }));
+
+    const open = sev.critical + sev.high + sev.medium + sev.low;
+    document.getElementById('c-critical').textContent = sev.critical;
+    document.getElementById('c-high').textContent = sev.high;
+    document.getElementById('c-medium').textContent = sev.medium;
+    document.getElementById('c-low').textContent = sev.low;
+    document.getElementById('c-accepted').textContent = sev.accepted;
+    document.getElementById('total-label').textContent = open + ' open · ' + sev.accepted + ' accepted';
+
+    // Recent scans (newest first, up to 5)
+    const scEl = document.getElementById('recent-scans');
+    if (!scans.length) {
+        scEl.innerHTML = '<div class="empty-state"><div class="big">No scans yet</div>Run a PC or Web scan to populate your console.</div>';
+    } else {
+        scEl.innerHTML = scans.slice().reverse().slice(0, 5).map(s => `
+            <a class="row" href="${s.reportUrl}">
+                <span class="type-chip ${s.type === 'PC' ? 'type-pc' : 'type-web'}">${s.type}</span>
+                <div>
+                    <div class="title mono">${VulnSense.esc(s.label)}</div>
+                    <div class="meta">${s.client_name ? '<span class="client-chip">' + VulnSense.esc(s.client_name) + '</span> · ' : ''}${VulnSense.esc(s.subLabel)}</div>
+                </div>
+                <div class="right">
+                    <div class="meta">${(s.findings || []).length} findings</div>
+                    <div class="meta">${s.critical_count || 0} crit · ${s.high_count || 0} high</div>
+                </div>
+            </a>`).join('');
+    }
+
+    // Recent risks (critical/high first, up to 6)
+    const order = { critical: 0, high: 1, medium: 2, low: 3 };
+    risks.sort((a, b) => (order[a.finding.severity?.toLowerCase()] ?? 9) - (order[b.finding.severity?.toLowerCase()] ?? 9));
+    const rkEl = document.getElementById('recent-risks');
+    if (!risks.length) {
+        rkEl.innerHTML = '<div class="empty-state"><div class="big">No risks detected</div>Findings from your scans will appear here.</div>';
+    } else {
+        rkEl.innerHTML = risks.slice(0, 6).map(r => {
+            const k = String(r.finding.severity || 'unknown').toLowerCase();
+            return `
+            <a class="row" href="${r.scan.reportUrl}">
+                <span class="badge sev-${k}"><span class="d"></span>${VulnSense.cap(k)}</span>
+                <div>
+                    <div class="title">${VulnSense.esc(r.finding.description || r.finding.cve_id || 'Finding')}</div>
+                    <div class="meta mono">${VulnSense.esc(r.scan.label)}</div>
+                </div>
+            </a>`;
+        }).join('');
+    }
+
+    // Scans by client
+    const boardEl = document.getElementById('client-board');
+    try {
+        const data = await (await fetch('/api/scans-by-client')).json();
+        const clients = data.clients || [];
+        if (!clients.length) {
+            boardEl.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="big">No clients yet</div>Scans grouped by client will appear here.</div>';
+        } else {
+            boardEl.innerHTML = clients.map(c => {
+                const last = c.last_scanned ? new Date(c.last_scanned).toLocaleDateString() : 'No scans yet';
+                const crit = c.critical_total > 0 ? `<span class="badge sev-critical"><span class="d"></span>${c.critical_total}</span>` : '';
+                const high = c.high_total > 0 ? `<span class="badge sev-high"><span class="d"></span>${c.high_total}</span>` : '';
+                const sev = (crit || high) ? `<div class="cc-sev">${crit}${high}</div>` : '';
+                return `<a class="client-card" href="/reports">
+                    <div class="cc-name">${VulnSense.esc(c.client)}</div>
+                    <div class="cc-scans">${c.scan_count}</div>
+                    <div class="cc-sub">scan${c.scan_count === 1 ? '' : 's'} · last ${last}</div>
+                    ${sev}
+                </a>`;
+            }).join('');
+        }
+    } catch (e) {
+        boardEl.innerHTML = '<div class="empty-state" style="grid-column:1/-1">Could not load client rollups.</div>';
+    }
+})();
+</script>
+{% endblock %}

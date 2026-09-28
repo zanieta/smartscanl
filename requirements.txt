@@ -1,0 +1,42 @@
+# VulnSense runtime dependencies — pinned from the shipping environment
+# (Linux / WSL2 /opt/vulnsense/.venv, Python 3.x, PostgreSQL 16). PostgreSQL is
+# the only supported database backend; SQLite has been retired.
+#
+# Regenerate after changing deps: on the deploy host, `pip freeze` inside the venv
+# and reconcile the versions below.
+
+# --- Web app / API ---
+fastapi==0.139.0
+uvicorn==0.50.2
+jinja2==3.1.6
+python-multipart==0.0.32
+itsdangerous==2.2.0
+
+# --- Scanning + HTTP ---
+python-nmap==0.7.1
+requests==2.34.2
+httpx==0.28.1
+beautifulsoup4==4.15.0
+
+# --- Data / persistence (PostgreSQL only) ---
+sqlalchemy==2.0.51
+psycopg[binary]==3.3.4
+
+# --- LLM provider ---
+# Ollama is the active provider and is called over plain HTTP via requests (no SDK).
+# anthropic stays pinned for the commented-out Claude fallback (agent/llm_agent.py).
+anthropic==0.116.0
+python-dotenv==1.2.2
+
+# --- Reporting ---
+reportlab==5.0.0
+
+# --- Auth / 2FA ---
+pyotp==2.10.0
+segno==1.6.6
+
+# --- Production server ---
+gunicorn==26.0.0
+
+# --- Test/dev only (consider splitting into requirements-dev.txt) ---
+pytest==9.1.1

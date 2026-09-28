@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Network discovery{% endblock %}
+{% block style %}
+.discovery-wrap { overflow-wrap: anywhere; }
+.discovery-hosts { display: flex; flex-wrap: wrap; gap: .75rem; padding: 0; list-style: none; }
+.discovery-hosts li { border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: .75rem; }
+.discovery-run { margin-top: 1rem; }
+.discovery-refresh:focus-visible { outline: 3px solid var(--brand-green); outline-offset: 3px; }
+@media (max-width: 720px) {
+    .topbar { flex-wrap: wrap; height: auto; padding: .75rem 1rem; }
+    .topbar .userbox { margin-left: auto; }
+}
+{% endblock %}
+{% block body %}
+<div class="discovery-wrap">
+<div class="page-head"><div><h1 class="page-title">Network discovery</h1>
+<p class="page-sub">Responding devices on administrator-approved networks.</p></div>
+<a class="btn discovery-refresh" href="/admin/network">Refresh results</a></div>
+<section class="card card-pad" aria-label="Discovery configuration">
+<p>Configuration: <strong>{{ 'Enabled' if enabled else 'Disabled' }}</strong></p>
+<p>Approved ranges: <code>{{ ranges or 'None configured' }}</code></p>
+<p>The Ubuntu timer checks every 15 minutes when installed and enabled. Configuration alone does not confirm the timer is running.</p>
+<p>This uses active TCP discovery probes, not passive monitoring or a vulnerability scan. Firewalls can hide devices; absence does not mean a device is offline. Times below are UTC.</p>
+{% if not enabled %}<p>Ask your server administrator to configure approved ranges and enable discovery. No network checks run by default.</p>{% endif %}
+</section>
+{% for run in runs %}
+<section class="card card-pad discovery-run" aria-label="Discovery run">
+<h2 class="section">{{ run.status | capitalize }} — {{ run.started_at }}</h2>
+<p>Ranges: {{ run.networks | join(', ') }}</p>
+{% if run.error %}<p role="alert">{{ run.error }}</p>{% endif %}
+{% if run.status == 'completed' %}
+<p>{{ run.hosts | length }} responding device(s). Snapshot only—not current live status.</p>
+<ul class="discovery-hosts">{% for host in run.hosts %}<li><strong>{{ host.ip }}</strong><br><small>{{ host.network }}</small></li>{% endfor %}</ul>
+{% elif run.status == 'running' %}<p role="status">Check in progress. Refresh this page for results.</p>{% endif %}
+</section>
+{% else %}<section class="card card-pad discovery-run"><p>No discovery runs recorded yet.</p></section>{% endfor %}
+</div>
+{% endblock %}

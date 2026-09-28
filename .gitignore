@@ -1,0 +1,8 @@
+# Created by the installer inside your clone — never commit these.
+.env
+.venv/
+*.db
+logs/
+reports/*.pdf
+__pycache__/
+*.pyc

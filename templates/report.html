@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Host Report{% endblock %}
+{% block style %}
+    .summary-box {
+        background: linear-gradient(180deg, #f7f9fc, #f2f5fb);
+        padding: 1.2rem 1.4rem; border: 1px solid var(--border);
+        border-left: 4px solid var(--brand-navy); border-radius: 10px; margin-bottom: 1.5rem;
+    }
+    .summary-box h2 { margin-top: 0; }
+    .summary-box p { margin-bottom: 0; }
+    .info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.9rem; margin-bottom: 1.8rem; }
+    .info-item { background: #fbfcfe; padding: 0.9rem 1rem; border: 1px solid var(--border); border-radius: 10px; }
+    .info-item .info-label { display: block; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); font-weight: 700; margin-bottom: 0.25rem; }
+    .info-item .info-value { font-weight: 600; word-break: break-word; }
+    .info-item .info-value.mono { font-family: 'IBM Plex Mono', monospace; font-weight: 500; }
+
+    .findings { display: grid; gap: 1rem; }
+    .finding { border: 1px solid var(--border); border-left: 4px solid var(--closed); border-radius: 12px; background: #fff; padding: 1.05rem 1.25rem 1.2rem; box-shadow: var(--shadow-sm); }
+    .finding.sev-critical { border-left-color: var(--critical); }
+    .finding.sev-high { border-left-color: var(--high); }
+    .finding.sev-medium { border-left-color: var(--medium); }
+    .finding.sev-low { border-left-color: var(--low); }
+    .finding-head { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; }
+    .finding-id { font-family: 'IBM Plex Mono', monospace; font-weight: 600; color: var(--brand-navy); font-size: 0.86rem; }
+    .finding-cvss { margin-left: auto; font-size: 0.72rem; color: var(--text-muted); font-weight: 600; background: var(--bg); border: 1px solid var(--border); padding: 0.2rem 0.6rem; border-radius: 99px; }
+    .finding-title { font-family: 'Fraunces', Georgia, serif; font-size: 1.02rem; font-weight: 600; color: var(--text); margin: 0.7rem 0 0.9rem; line-height: 1.35; }
+    .finding-body { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 640px) { .finding-body { grid-template-columns: 1fr; } }
+    .finding-label { display: block; font-size: 0.67rem; text-transform: uppercase; letter-spacing: 0.07em; font-weight: 700; color: var(--text-muted); margin-bottom: 0.3rem; }
+    .finding-block p { margin: 0; font-size: 0.88rem; line-height: 1.55; }
+    .findings-empty { text-align: center; color: var(--text-muted); padding: 2rem; border: 1px dashed var(--border); border-radius: 12px; }
+    .finding.is-accepted { opacity: 0.66; }
+    .accept-btn {
+        margin-left: 0.4rem; font-size: 0.74rem; font-weight: 700; padding: 0.34rem 0.7rem; border-radius: 8px;
+        border: 1px solid var(--border-strong); background: var(--paper); color: var(--brand-navy); cursor: pointer;
+        font-family: inherit; white-space: nowrap; transition: background 0.15s;
+    }
+    .accept-btn:hover { background: #f3f5fb; }
+    .accept-btn.undo { color: var(--accepted); border-color: rgba(48,164,108,0.4); }
+    .accept-btn:disabled { opacity: 0.5; cursor: wait; }
+    .back-link { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--brand-navy); text-decoration: none; font-weight: 600; font-size: 0.85rem; margin-bottom: 1rem; }
+    .back-link:hover { color: var(--brand-navy-light); }
+{% endblock %}
+
+{% block body %}
+<a href="/reports" class="back-link">&larr; Back to Reports</a>
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Host Security Report</h1>
+        <div class="page-sub mono">ID: {{ report.scan_id }}</div>
+    </div>
+    <a href="/report/{{ report.scan_id }}/pdf" target="_blank" class="btn">&darr; Download PDF</a>
+</div>
+
+<div class="summary-box">
+    <h2 class="section">Executive Summary</h2>
+    <p>{{ report.summary }}</p>
+</div>
+
+<h2 class="section">Host Information</h2>
+<div class="info-grid">
+    <div class="info-item"><span class="info-label">Host IP</span><span class="info-value mono">{{ report.host }}</span></div>
+    <div class="info-item"><span class="info-label">OS Detected</span><span class="info-value">{{ report.os }}</span></div>
+    <div class="info-item"><span class="info-label">Open Ports</span><span class="info-value mono">{{ report.open_ports | join(', ') }}</span></div>
+    <div class="info-item"><span class="info-label">Total CVEs</span><span class="info-value">{{ report.cves_found }}</span></div>
+    <div class="info-item"><span class="info-label">Critical / High</span><span class="info-value">{{ report.critical_count }} / {{ report.high_count }}</span></div>
+</div>
+
+<h2 class="section">Vulnerability Findings</h2>
+<div class="findings">
+    {% for finding in report.findings %}
+    {% set accepted = finding.status == 'accepted' %}
+    {% set sev = finding.severity | lower | replace(' ', '-') %}
+    <article class="finding sev-{{ sev }} {% if accepted %}is-accepted{% endif %}">
+        <div class="finding-head">
+            {% if accepted %}<span class="badge sev-accepted"><span class="d"></span>Accepted</span>{% else %}<span class="badge sev-{{ sev }}"><span class="d"></span>{{ finding.severity | capitalize }}</span>{% endif %}
+            <span class="finding-id">{{ finding.cve_id }}</span>
+            <span class="finding-cvss">CVSS {{ finding.cvss }}</span>
+            <button class="accept-btn {% if accepted %}undo{% endif %}" data-cve="{{ finding.cve_id }}" data-accept="{{ 0 if accepted else 1 }}">{{ 'Undo' if accepted else 'Accept Risk' }}</button>
+        </div>
+        <div class="finding-title">{{ finding.description }}</div>
+        <div class="finding-body">
+            <div class="finding-block"><span class="finding-label">Why it matters</span><p>{{ finding.risk_explanation }}</p></div>
+            <div class="finding-block"><span class="finding-label">Recommendation</span><p>{{ finding.fix }}</p></div>
+        </div>
+    </article>
+    {% else %}
+    <div class="findings-empty">No vulnerabilities found. The host is clear for the scanned products.</div>
+    {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/app.js"></script>
+<script>
+const SCAN_ID = "{{ report.scan_id }}";
+document.querySelectorAll('.accept-btn').forEach(b => b.addEventListener('click', async () => {
+    const accept = b.dataset.accept === '1';
+    b.disabled = true;
+    const ok = await VulnSense.setRiskStatus('PC', SCAN_ID, b.dataset.cve, accept);
+    if (ok) location.reload();
+    else { b.disabled = false; alert('Could not update the risk status. Please try again.'); }
+}));
+</script>
+{% endblock %}

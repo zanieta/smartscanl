@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Risks{% endblock %}
+{% block style %}
+    .filters { display: flex; gap: 0.5rem; margin-bottom: 1.2rem; flex-wrap: wrap; }
+    .chip {
+        font-size: 0.78rem; font-weight: 700; padding: 0.4rem 0.85rem; border-radius: 99px;
+        border: 1px solid var(--border-strong); background: var(--paper); color: var(--text-muted); cursor: pointer;
+    }
+    .chip.active { background: var(--brand-navy); color: #fff; border-color: var(--brand-navy); }
+    .chip .n { opacity: 0.7; font-weight: 600; }
+    tbody tr { transition: background 0.15s; }
+    tbody tr:hover { background: var(--surface-hover); }
+    tr.is-accepted { opacity: 0.62; }
+    .vuln-name { font-weight: 600; color: var(--text); cursor: pointer; }
+    .vuln-src { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); font-weight: 700; }
+    .cvss-pill { font-size: 0.72rem; color: var(--text-muted); font-weight: 600; }
+    .act-btn {
+        font-size: 0.74rem; font-weight: 700; padding: 0.4rem 0.8rem; border-radius: 8px;
+        border: 1px solid var(--border-strong); background: var(--paper); color: var(--brand-navy); cursor: pointer;
+        white-space: nowrap; font-family: inherit; transition: background 0.15s, border-color 0.15s;
+    }
+    .act-btn:hover { background: #f3f5fb; }
+    .act-btn.undo { color: var(--accepted); border-color: rgba(48,164,108,0.4); }
+    .act-btn:disabled { opacity: 0.5; cursor: wait; }
+{% endblock %}
+
+{% block body %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Risks</h1>
+        <div class="page-sub">Every finding across your PC and Web scans. Accept a risk to acknowledge it and drop it from the open counts.</div>
+    </div>
+    <a href="/pc" class="btn">+ New Scan</a>
+</div>
+
+<div class="filters" id="filters">
+    <button class="chip active" data-sev="all">All <span class="n" id="n-all">0</span></button>
+    <button class="chip" data-sev="critical">Critical <span class="n" id="n-critical">0</span></button>
+    <button class="chip" data-sev="high">High <span class="n" id="n-high">0</span></button>
+    <button class="chip" data-sev="medium">Medium <span class="n" id="n-medium">0</span></button>
+    <button class="chip" data-sev="low">Low <span class="n" id="n-low">0</span></button>
+    <button class="chip" data-sev="accepted">Accepted <span class="n" id="n-accepted">0</span></button>
+</div>
+
+<section class="card card-pad">
+    <table>
+        <thead><tr><th style="width:64px">Threat</th><th>Vulnerability</th><th>Target</th><th style="width:72px">CVSS</th><th style="width:120px;text-align:right">Status</th></tr></thead>
+        <tbody id="risk-body"></tbody>
+    </table>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/app.js"></script>
+<script>
+let ALL = [];      // [{scan, finding}]
+let filter = 'all';
+
+function refreshCounts() {
+    const counts = { all: ALL.length, critical: 0, high: 0, medium: 0, low: 0, accepted: 0 };
+    ALL.forEach(r => { const b = VulnSense.bucketOf(r.finding); if (b in counts) counts[b]++; });
+    Object.keys(counts).forEach(k => { const el = document.getElementById('n-' + k); if (el) el.textContent = counts[k]; });
+}
+
+function visible() {
+    if (filter === 'all') return ALL.map((r, i) => ({ r, i }));
+    return ALL.map((r, i) => ({ r, i })).filter(({ r }) => VulnSense.bucketOf(r.finding) === filter);
+}
+
+function render() {
+    const tbody = document.getElementById('risk-body');
+    const rows = visible();
+    if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><div class="big">Nothing here</div>No findings match this filter.</div></td></tr>';
+        return;
+    }
+    tbody.innerHTML = rows.map(({ r, i }) => {
+        const f = r.finding;
+        const accepted = VulnSense.isAccepted(f);
+        const k = accepted ? 'accepted' : String(f.severity || 'unknown').toLowerCase();
+        const isCve = String(f.cve_id || '').toUpperCase().startsWith('CVE-');
+        const meter = accepted
+            ? `<span class="badge sev-accepted"><span class="d"></span>Accepted</span>`
+            : VulnSense.threatBars(k);
+        const btn = accepted
+            ? `<button class="act-btn undo" data-i="${i}" data-accept="0">Undo</button>`
+            : `<button class="act-btn" data-i="${i}" data-accept="1">Accept Risk</button>`;
+        return `<tr class="${accepted ? 'is-accepted' : ''}">
+            <td>${meter}</td>
+            <td>
+                <div class="vuln-src">${r.scan.type === 'PC' ? 'Nmap / CVE' : 'ZAP Passive'}</div>
+                <div class="vuln-name" onclick="location.href='${r.scan.reportUrl}'">${VulnSense.esc(f.description || f.cve_id || 'Finding')}</div>
+                <span class="badge sev-${k}" style="margin-top:0.3rem"><span class="d"></span>${VulnSense.cap(k)}</span>
+                ${isCve ? `<span class="cvss-pill mono"> · ${VulnSense.esc(f.cve_id)}</span>` : ''}
+            </td>
+            <td class="mono" style="color:var(--brand-navy);font-size:0.82rem">${VulnSense.esc(r.scan.label)}</td>
+            <td class="cvss-pill">${f.cvss != null && f.cvss !== '' ? f.cvss : 'N/A'}</td>
+            <td style="text-align:right">${btn}</td>
+        </tr>`;
+    }).join('');
+
+    tbody.querySelectorAll('.act-btn').forEach(b => b.addEventListener('click', onToggle));
+}
+
+async function onToggle(e) {
+    const btn = e.currentTarget;
+    const i = +btn.dataset.i;
+    const accept = btn.dataset.accept === '1';
+    const { scan, finding } = ALL[i];
+    btn.disabled = true;
+    const ok = await VulnSense.setRiskStatus(scan.type, scan.scan_id, finding.cve_id, accept);
+    if (ok) {
+        finding.status = accept ? 'accepted' : 'open';
+        refreshCounts();
+        render();
+    } else {
+        btn.disabled = false;
+        alert('Could not update the risk status. Please try again.');
+    }
+}
+
+(async function () {
+    const scans = await VulnSense.loadAllScans();
+    scans.forEach(s => (s.findings || []).forEach(f => ALL.push({ scan: s, finding: f })));
+    const order = { critical: 0, high: 1, medium: 2, low: 3 };
+    ALL.sort((a, b) => (order[(a.finding.severity || '').toLowerCase()] ?? 9) - (order[(b.finding.severity || '').toLowerCase()] ?? 9));
+
+    refreshCounts();
+    document.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => {
+        document.querySelectorAll('.chip').forEach(x => x.classList.remove('active'));
+        c.classList.add('active'); filter = c.dataset.sev; render();
+    }));
+    render();
+})();
+</script>
+{% endblock %}

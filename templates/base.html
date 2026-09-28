@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}SmartScan{% endblock %} · DEWEBNET</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* DEWEBNET brand */
+            --brand-navy: #11178C;
+            --brand-navy-2: #1b2099;
+            --brand-navy-light: #2b34c9;
+            --brand-green: #8CC63F;
+            --brand-green-dark: #6fa72c;
+
+            /* surfaces — white-led; navy is ink, lime is the accent */
+            --bg: #f5f7fb;
+            --paper: #ffffff;
+            --sidebar: #ffffff;
+            --surface-hover: #f3f7ec;
+            --text: #1c2230;
+            --text-muted: #6b7185;
+            --text-faint: #9aa0b4;
+            --border: #e9edf5;
+            --border-strong: #dde3ef;
+
+            /* severity (HostedScan-aligned, 5 states) */
+            --critical: #7c3aed;   /* purple */
+            --high: #e5484d;       /* red */
+            --medium: #f76808;     /* orange */
+            --low: #e0b400;        /* yellow */
+            --accepted: #30a46c;   /* green */
+            --closed: #8b91a3;     /* gray */
+
+            --radius: 14px;
+            --radius-sm: 10px;
+            --shadow: 0 1px 2px rgba(17,23,140,0.04), 0 14px 30px -20px rgba(17,23,140,0.20);
+            --shadow-sm: 0 1px 2px rgba(17,23,140,0.05);
+            --sidebar-w: 244px;
+        }
+
+        * { box-sizing: border-box; }
+
+        html, body { height: 100%; }
+        body {
+            font-family: 'Manrope', system-ui, sans-serif;
+            color: var(--text);
+            margin: 0;
+            line-height: 1.55;
+            background: var(--bg);
+            -webkit-font-smoothing: antialiased;
+        }
+
+        a { color: inherit; }
+
+        /* ===================== Layout ===================== */
+        .app { display: flex; min-height: 100vh; }
+
+        /* ===================== Sidebar (light) ===================== */
+        .sidebar {
+            width: var(--sidebar-w);
+            flex: none;
+            position: sticky;
+            top: 0;
+            align-self: flex-start;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 1.15rem 0.9rem 1rem;
+            color: var(--text);
+            background:
+                radial-gradient(360px 200px at 8% -6%, rgba(140,198,63,0.07), transparent 62%),
+                var(--sidebar);
+            border-right: 1px solid var(--border);
+        }
+
+        .logo-chip {
+            padding: 0.3rem 0.55rem 1.05rem;
+            margin: 0.1rem 0.2rem 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .logo-chip img { display: block; width: 100%; height: auto; }
+
+        .nav-group-label {
+            font-size: 0.64rem;
+            text-transform: uppercase;
+            letter-spacing: 0.16em;
+            color: var(--text-faint);
+            font-weight: 800;
+            padding: 0 0.85rem;
+            margin: 0.4rem 0 0.5rem;
+        }
+
+        /* trace rail: a hairline the nav nodes sit on (echoes the logo's PCB traces) */
+        .nav-group { position: relative; padding-left: 0.95rem; }
+        .nav-group::before {
+            content: ""; position: absolute; left: 0.5rem; top: 0.55rem; bottom: 0.35rem;
+            width: 1.5px; background: linear-gradient(var(--border-strong), transparent);
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 0.7rem;
+            padding: 0.6rem 0.8rem;
+            border-radius: 10px;
+            text-decoration: none;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-bottom: 0.1rem;
+            position: relative;
+            transition: background 0.15s, color 0.15s;
+        }
+        /* node on the trace rail */
+        .nav-item::after {
+            content: ""; position: absolute; left: -0.57rem; top: 50%;
+            transform: translateY(-50%);
+            width: 7px; height: 7px; border-radius: 50%;
+            background: var(--paper); border: 1.5px solid var(--border-strong);
+            transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+        }
+        .nav-item svg { width: 18px; height: 18px; flex: none; opacity: 0.7; }
+        .nav-item:hover { background: var(--surface-hover); color: var(--brand-navy); }
+        .nav-item:hover::after { border-color: var(--brand-green); }
+        .nav-item.active {
+            background: rgba(140,198,63,0.12);
+            color: var(--brand-navy);
+            font-weight: 700;
+        }
+        .nav-item.active::after {
+            background: var(--brand-green); border-color: var(--brand-green);
+            box-shadow: 0 0 0 3px rgba(140,198,63,0.22);
+        }
+        .nav-item.active svg { opacity: 1; color: var(--brand-green-dark); }
+
+        .sidebar-spacer { flex: 1; }
+
+        .sidebar-foot {
+            border-top: 1px solid var(--border);
+            padding-top: 0.8rem;
+            margin-top: 0.8rem;
+            font-size: 0.72rem;
+            color: var(--text-faint);
+            padding-left: 0.85rem;
+            line-height: 1.5;
+        }
+        .sidebar-foot b { color: var(--brand-green-dark); font-weight: 700; }
+
+        /* ===================== Main ===================== */
+        .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+        .topbar {
+            height: 56px;
+            flex: none;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0 1.6rem 0 2rem;
+            background: var(--paper);
+            border-bottom: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: 0.82rem;
+            letter-spacing: 0.01em;
+        }
+        .topbar .dot {
+            width: 7px; height: 7px; border-radius: 50%; background: var(--brand-green);
+            box-shadow: 0 0 0 4px rgba(140,198,63,0.22);
+        }
+        .topbar b { font-weight: 700; color: var(--brand-navy); }
+        .topbar .spacer { flex: 1; }
+
+        .userbox { display: flex; align-items: center; gap: 0.7rem; }
+        .user-meta { text-align: right; line-height: 1.15; }
+        .user-meta .u-name { font-size: 0.82rem; font-weight: 700; color: var(--text); }
+        .role-chip {
+            display: inline-block; font-size: 0.6rem; font-weight: 800; letter-spacing: 0.06em;
+            text-transform: uppercase; padding: 0.08rem 0.4rem; border-radius: 5px; margin-top: 0.1rem;
+        }
+        .role-admin { background: rgba(17,23,140,0.1); color: var(--brand-navy); }
+        .role-analyst { background: rgba(140,198,63,0.18); color: var(--brand-green-dark); }
+        .avatar {
+            width: 32px; height: 32px; border-radius: 9px; flex: none;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 800; font-size: 0.8rem; color: #fff;
+            background: linear-gradient(150deg, var(--brand-navy), #2b34c9);
+        }
+        .logout-link {
+            font-size: 0.74rem; font-weight: 700; color: var(--text-muted);
+            text-decoration: none; padding: 0.35rem 0.6rem; border-radius: 7px;
+            border: 1px solid var(--border-strong);
+        }
+        .logout-link:hover { color: var(--brand-navy); background: var(--surface-hover); }
+
+        .content { padding: 2.1rem 2.4rem 3rem; flex: 1; }
+        @media (max-width: 720px) { .content { padding: 1.5rem 1.1rem 2.5rem; } }
+
+        .page-head {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin-bottom: 1.6rem;
+        }
+        .page-title {
+            font-family: 'Fraunces', Georgia, serif;
+            font-size: 2rem;
+            font-weight: 600;
+            letter-spacing: -0.015em;
+            margin: 0;
+            color: var(--brand-navy);
+        }
+        .page-sub { color: var(--text-muted); font-size: 0.86rem; margin-top: 0.2rem; }
+
+        /* ===================== Reusable ===================== */
+        .card {
+            background: var(--paper);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+        }
+        .card-pad { padding: 1.4rem 1.5rem; }
+
+        h2.section {
+            font-family: 'Fraunces', Georgia, serif;
+            font-size: 1.18rem;
+            font-weight: 600;
+            color: var(--text);
+            margin: 0 0 1.1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+        /* trace-and-via marker from the logo */
+        h2.section::before {
+            content: ""; flex: none; width: 26px; height: 12px;
+            background-image:
+                radial-gradient(circle at 22px 6px, var(--brand-green) 0 3px, rgba(140,198,63,0.30) 3px 5px, transparent 5px),
+                linear-gradient(var(--brand-navy), var(--brand-navy));
+            background-size: 26px 12px, 19px 2px;
+            background-position: 0 0, 0 5px;
+            background-repeat: no-repeat;
+        }
+
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 0.45rem;
+            padding: 0.62rem 1.1rem;
+            background: var(--brand-navy);
+            color: #fff;
+            border: none;
+            border-radius: 9px;
+            font-weight: 700;
+            font-size: 0.88rem;
+            font-family: inherit;
+            cursor: pointer;
+            text-decoration: none;
+            transition: background 0.15s, transform 0.05s;
+        }
+        .btn:hover { background: var(--brand-navy-light); }
+        .btn:active { transform: translateY(1px); }
+        .btn:disabled { background: #aab0c2; cursor: not-allowed; }
+        .btn-ghost { background: var(--paper); color: var(--brand-navy); border: 1px solid var(--border-strong); }
+        .btn-ghost:hover { background: #f3f5fb; }
+
+        .badge {
+            display: inline-flex; align-items: center; gap: 0.35rem;
+            padding: 0.2rem 0.6rem;
+            border-radius: 99px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+        .badge .d { width: 7px; height: 7px; border-radius: 50%; }
+        .sev-critical { color: var(--critical); background: rgba(124,58,237,0.12); }
+        .sev-critical .d { background: var(--critical); }
+        .sev-high { color: var(--high); background: rgba(229,72,77,0.12); }
+        .sev-high .d { background: var(--high); }
+        .sev-medium { color: #b4500a; background: rgba(247,104,8,0.13); }
+        .sev-medium .d { background: var(--medium); }
+        .sev-low { color: #8a6d00; background: rgba(224,180,0,0.16); }
+        .sev-low .d { background: var(--low); }
+        .sev-accepted { color: var(--accepted); background: rgba(48,164,108,0.13); }
+        .sev-accepted .d { background: var(--accepted); }
+        .sev-unknown { color: var(--closed); background: rgba(139,145,163,0.14); }
+        .sev-unknown .d { background: var(--closed); }
+
+        .mono { font-family: 'IBM Plex Mono', monospace; }
+
+        /* tables */
+        table { width: 100%; border-collapse: collapse; }
+        thead th {
+            text-align: left;
+            font-size: 0.66rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-faint);
+            font-weight: 700;
+            padding: 0 1rem 0.7rem;
+            border-bottom: 1px solid var(--border);
+        }
+        tbody td { padding: 0.9rem 1rem; border-bottom: 1px solid var(--border); font-size: 0.88rem; vertical-align: middle; }
+        tbody tr:last-child td { border-bottom: none; }
+
+        .empty-state { text-align: center; color: var(--text-muted); padding: 2.5rem 1rem; }
+        .empty-state .big { font-family: 'Fraunces', serif; color: var(--text); font-size: 1.05rem; margin-bottom: 0.3rem; }
+
+        /* threat meter (signal bars) */
+        .threat { display: inline-flex; align-items: flex-end; gap: 2px; height: 16px; }
+        .threat i { width: 4px; border-radius: 1px; background: currentColor; opacity: 0.28; }
+        .threat i:nth-child(1) { height: 6px; }
+        .threat i:nth-child(2) { height: 9px; }
+        .threat i:nth-child(3) { height: 12px; }
+        .threat i:nth-child(4) { height: 16px; }
+        .threat.lv-critical { color: var(--critical); }
+        .threat.lv-high { color: var(--high); }
+        .threat.lv-medium { color: var(--medium); }
+        .threat.lv-low { color: var(--low); }
+        .threat.lv-critical i { opacity: 1; }
+        .threat.lv-high i:nth-child(-n+3) { opacity: 1; }
+        .threat.lv-medium i:nth-child(-n+2) { opacity: 1; }
+        .threat.lv-low i:nth-child(-n+1) { opacity: 1; }
+
+        .spinner {
+            width: 16px; height: 16px;
+            border: 2px solid rgba(17,23,140,0.2);
+            border-top-color: var(--brand-navy);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            flex: none;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        @media (max-width: 720px) {
+            .sidebar { position: fixed; left: 0; z-index: 30; transform: translateX(-100%); transition: transform 0.2s; }
+            .sidebar.open { transform: none; }
+            .main { width: 100%; }
+        }
+        {% block style %}{% endblock %}
+    </style>
+</head>
+<body>
+    <div class="app">
+        <aside class="sidebar">
+            <div class="logo-chip"><img src="/static/logo.png" alt="DEWEBNET Solution"></div>
+
+            <div class="nav-group-label">Operations</div>
+            <div class="nav-group">
+                <a href="/" class="nav-item {% if active == 'dashboard' %}active{% endif %}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                    Dashboard
+                </a>
+                <a href="/risks" class="nav-item {% if active == 'risks' %}active{% endif %}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 21V4l9-1v18"/><path d="M13 9h6v12H4"/><path d="M16 13h.01M16 17h.01"/></svg>
+                    Risks
+                </a>
+                <a href="/reports" class="nav-item {% if active == 'reports' %}active{% endif %}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h11l5 5v11a0 0 0 0 1 0 0H4z"/><path d="M14 4v5h5"/><path d="M8 13h8M8 17h5"/></svg>
+                    Reports
+                </a>
+            </div>
+
+            <div class="nav-group-label" style="margin-top:1.1rem;">Scanners</div>
+            <div class="nav-group">
+                <a href="/pc" class="nav-item {% if active == 'pc' %}active{% endif %}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+                    PC Scan
+                </a>
+                <a href="/web" class="nav-item {% if active == 'web' %}active{% endif %}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 2.5 15.3 0 18M12 3c-2.5 2.7-2.5 15.3 0 18"/></svg>
+                    Web Scan
+                </a>
+            </div>
+
+            {% if user and user.role == 'admin' %}
+            <div class="nav-group-label" style="margin-top:1.1rem;">Administration</div>
+            <div class="nav-group">
+                <a href="/clients" class="nav-item {% if active == 'clients' %}active{% endif %}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><circle cx="9" cy="7" r="3"/><path d="M17 11a3 3 0 1 0 0-6M21 21v-2a4 4 0 0 0-3-3.85"/></svg>
+                    Clients
+                </a>
+                <a href="/tokens" class="nav-item {% if active == 'tokens' %}active{% endif %}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="15" r="4"/><path d="M10.85 12.15 19 4M18 5l2 2M15 8l2 2"/></svg>
+                    Tokens
+                </a>
+                <a href="/admin/network" class="nav-item {% if active == 'network' %}active{% endif %}">Network discovery</a>
+                <a href="/admin/users" class="nav-item {% if active == 'users' %}active{% endif %}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>
+                    Accounts
+                </a>
+            </div>
+            {% endif %}
+
+            <div class="sidebar-spacer"></div>
+            <div class="sidebar-foot">
+                SmartScan<br>
+                Powered by <b>DEWEBNET Solution</b>
+            </div>
+        </aside>
+
+        <div class="main">
+            <div class="topbar">
+                <span class="dot"></span>
+                Security Operations Console &nbsp;·&nbsp; <b>SmartScan</b> — AI Vulnerability Scanner
+                <span class="spacer"></span>
+                {% if user %}
+                <div class="userbox">
+                    <div class="user-meta">
+                        <div class="u-name">{{ user.full_name or user.username }}</div>
+                        <span class="role-chip {{ 'role-admin' if user.role == 'admin' else 'role-analyst' }}">{{ user.role }}</span>
+                    </div>
+                    <div class="avatar">{{ (user.full_name or user.username)[0]|upper }}</div>
+                    <a href="/logout" class="logout-link">Sign out</a>
+                </div>
+                {% endif %}
+            </div>
+            <main class="content">
+                {% block body %}{% endblock %}
+            </main>
+        </div>
+    </div>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

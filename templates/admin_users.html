@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Accounts{% endblock %}
+{% block style %}
+    .layout { display: grid; grid-template-columns: 340px 1fr; gap: 1.25rem; align-items: start; }
+    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+    .form-group { margin-bottom: 1.05rem; }
+    label { display: block; margin-bottom: 0.4rem; font-size: 0.8rem; font-weight: 600; }
+    input, select {
+        width: 100%; padding: 0.7rem 0.8rem; background: #fbfcfe; border: 1px solid var(--border-strong);
+        border-radius: 9px; color: var(--text); font-size: 0.92rem; font-family: inherit;
+        transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    input:focus, select:focus { outline: none; border-color: var(--brand-green); box-shadow: 0 0 0 3px rgba(140,198,63,0.2); }
+    .hint { font-size: 0.74rem; color: var(--text-muted); margin-top: 0.4rem; }
+    form .btn { width: 100%; margin-top: 0.3rem; }
+    .flash { padding: 0.65rem 0.85rem; border-radius: 9px; font-size: 0.83rem; font-weight: 600; margin-bottom: 1.2rem; }
+    .flash.ok { background: rgba(48,164,108,0.12); color: var(--accepted); border: 1px solid rgba(48,164,108,0.25); }
+    .flash.err { background: rgba(229,72,77,0.1); color: #c0383c; border: 1px solid rgba(229,72,77,0.25); }
+    .rchip { display:inline-block; font-size:0.68rem; font-weight:800; letter-spacing:0.05em; text-transform:uppercase; padding:0.15rem 0.5rem; border-radius:6px; }
+    .rchip.admin { background: rgba(17,23,140,0.1); color: var(--brand-navy); }
+    .rchip.analyst { background: rgba(140,198,63,0.18); color: var(--brand-green-dark); }
+{% endblock %}
+
+{% block body %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Accounts</h1>
+        <div class="page-sub">Create and review console accounts. Admins manage clients &amp; tokens; analysts run scans.</div>
+    </div>
+</div>
+
+{% if ok %}<div class="flash ok">{{ ok }}</div>{% endif %}
+{% if error %}<div class="flash err">{{ error }}</div>{% endif %}
+
+<div class="layout">
+    <section class="card card-pad">
+        <h2 class="section">New Account</h2>
+        <form method="post" action="/admin/users">
+            <div class="form-group">
+                <label for="full_name">Full name <span style="color:var(--text-faint);font-weight:500">(optional)</span></label>
+                <input type="text" id="full_name" name="full_name" placeholder="Jane Dela Cruz">
+            </div>
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" placeholder="janedc" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" minlength="{{ min_password_len }}"
+                       placeholder="At least {{ min_password_len }} characters" required>
+                <div class="hint">Share it with the user; they can use it to sign in.</div>
+            </div>
+            <div class="form-group">
+                <label for="role">Role</label>
+                <select id="role" name="role">
+                    <option value="analyst" selected>Analyst — run scans, view reports</option>
+                    <option value="admin">Admin — manage clients, tokens &amp; accounts</option>
+                </select>
+            </div>
+            <button type="submit" class="btn">Create account</button>
+        </form>
+    </section>
+
+    <section class="card card-pad">
+        <h2 class="section">All Accounts</h2>
+        <table>
+            <thead><tr><th>User</th><th>Role</th><th>Status</th><th>Two-factor</th><th>Created</th></tr></thead>
+            <tbody>
+                {% for u in users %}
+                <tr>
+                    <td>
+                        <div style="font-weight:700;color:var(--text)">{{ u.full_name or u.username }}</div>
+                        <div class="meta mono" style="font-size:0.76rem;color:var(--text-muted)">{{ u.username }}</div>
+                    </td>
+                    <td><span class="rchip {{ u.role }}">{{ u.role }}</span></td>
+                    <td>{% if u.is_active %}<span style="color:var(--accepted);font-weight:700">Active</span>{% else %}<span style="color:var(--text-faint)">Disabled</span>{% endif %}</td>
+                    <td>
+                        {% if u.is_2fa_exempt %}
+                            <span style="color:#c0383c;font-weight:700" title="Break-glass account: signs in with a password alone">Exempt</span>
+                        {% elif u.has_2fa %}
+                            <span style="color:var(--accepted);font-weight:700">Enrolled</span>
+                            <form method="post" action="/admin/users/{{ u.id }}/reset-2fa" style="display:inline"
+                                  onsubmit="return confirm('Reset two-factor for {{ u.username }}? They will re-enroll at next sign-in.')">
+                                <button type="submit" class="btn-flat"
+                                        style="padding:0 0.4rem;height:auto;line-height:1.4;font-size:0.72rem;font-weight:700;color:var(--brand-navy,#11178C);text-transform:none">
+                                    Reset
+                                </button>
+                            </form>
+                        {% else %}
+                            <span style="color:var(--text-faint)" title="Will be required to enroll at next sign-in">Pending</span>
+                        {% endif %}
+                    </td>
+                    <td class="meta" style="color:var(--text-muted);font-size:0.8rem">{{ (u.created_at or '')[:10] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+</div>
+{% endblock %}

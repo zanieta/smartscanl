@@ -1,0 +1,9 @@
+[Unit]
+Description=Run VulnSense incremental NVD sync weekly
+
+[Timer]
+OnCalendar=weekly
+Persistent=true
+
+[Install]
+WantedBy=timers.target

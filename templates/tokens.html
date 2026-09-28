@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Tokens{% endblock %}
+{% block style %}
+    .layout { display: grid; grid-template-columns: 340px 1fr; gap: 1.25rem; align-items: start; }
+    @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
+    .form-group { margin-bottom: 1.05rem; }
+    label { display: block; margin-bottom: 0.4rem; font-size: 0.8rem; font-weight: 600; }
+    input, select {
+        width: 100%; padding: 0.7rem 0.8rem; background: #fbfcfe; border: 1px solid var(--border-strong);
+        border-radius: 9px; color: var(--text); font-size: 0.92rem; font-family: inherit;
+        transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    input:focus, select:focus { outline: none; border-color: var(--brand-green); box-shadow: 0 0 0 3px rgba(140,198,63,0.2); }
+    .hint { font-size: 0.74rem; color: var(--text-muted); margin-top: 0.4rem; }
+    form .btn { width: 100%; margin-top: 0.3rem; }
+    .flash { padding: 0.65rem 0.85rem; border-radius: 9px; font-size: 0.83rem; font-weight: 600; margin-bottom: 1.2rem; }
+    .flash.ok { background: rgba(48,164,108,0.12); color: var(--accepted); border: 1px solid rgba(48,164,108,0.25); display:flex; align-items:center; gap:0.5rem; }
+    .flash.err { background: rgba(229,72,77,0.1); color: #c0383c; border: 1px solid rgba(229,72,77,0.25); }
+
+    .tok { font-family: 'IBM Plex Mono', monospace; font-weight: 600; color: var(--brand-navy); cursor: pointer; }
+    .tok:hover { color: var(--brand-green-dark); }
+    .meter { width: 120px; height: 6px; border-radius: 99px; background: var(--border); overflow: hidden; margin-top: 0.35rem; }
+    .meter > i { display: block; height: 100%; background: var(--brand-green); }
+    .meter.low > i { background: var(--low); }
+    .meter.out > i { background: var(--high); }
+    .stat { font-size: 0.74rem; color: var(--text-muted); }
+    .pill { display:inline-flex; align-items:center; gap:0.3rem; padding:0.2rem 0.55rem; border-radius:99px; font-size:0.7rem; font-weight:800; }
+    .pill.active { background: rgba(48,164,108,0.13); color: var(--accepted); }
+    .pill.out { background: rgba(229,72,77,0.12); color: var(--high); }
+    .pill.revoked { background: rgba(139,145,163,0.16); color: var(--closed); }
+    .icon-btn { background: none; border: 1px solid var(--border-strong); border-radius: 7px; padding: 0.3rem 0.6rem; font-size: 0.74rem; font-weight: 700; color: var(--text-muted); cursor: pointer; font-family: inherit; }
+    .icon-btn:hover { color: var(--high); border-color: rgba(229,72,77,0.4); }
+{% endblock %}
+
+{% block body %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Token Generator</h1>
+        <div class="page-sub">Issue floating scan tokens to a client. Each token is good for the scan limit you set, then it must be regenerated.</div>
+    </div>
+</div>
+
+{% if ok %}<div class="flash ok"><span class="dot" style="width:7px;height:7px;border-radius:50%;background:var(--accepted)"></span>{{ ok }}</div>{% endif %}
+{% if error %}<div class="flash err">{{ error }}</div>{% endif %}
+
+<div class="layout">
+    <section class="card card-pad">
+        <h2 class="section">Generate Token</h2>
+        {% if clients %}
+        <form method="post" action="/tokens">
+            <div class="form-group">
+                <label for="client_id">Client</label>
+                <select id="client_id" name="client_id" required>
+                    <option value="" disabled selected>Choose a client…</option>
+                    {% for c in clients %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="scan_limit">Scan limit</label>
+                <input type="number" id="scan_limit" name="scan_limit" min="1" max="1000" value="5" required>
+                <div class="hint">How many scans this token authorizes before it's exhausted.</div>
+            </div>
+            <button type="submit" class="btn">Generate token</button>
+        </form>
+        {% else %}
+        <div class="empty-state">
+            <div class="big">No clients yet</div>
+            Create a <a href="/clients" style="color:var(--brand-navy);font-weight:700">client</a> first, then issue it tokens.
+        </div>
+        {% endif %}
+    </section>
+
+    <section class="card card-pad">
+        <h2 class="section">Issued Tokens</h2>
+        <table>
+            <thead><tr><th>Token</th><th>Client</th><th>Usage</th><th>Status</th><th>Last used</th><th></th></tr></thead>
+            <tbody>
+                {% for t in tokens %}
+                {% set pct = (t.uses / t.limit * 100) if t.limit else 0 %}
+                <tr>
+                    <td><span class="tok" title="Click to copy" onclick="copyTok(this)">{{ t.token }}</span></td>
+                    <td style="color:var(--text-muted)">{{ t.client }}</td>
+                    <td>
+                        <div class="stat"><b style="color:var(--text)">{{ t.uses }}</b> / {{ t.limit }} used · {{ t.remaining }} left</div>
+                        <div class="meter {{ 'out' if t.remaining == 0 else ('low' if t.remaining <= 1 else '') }}"><i style="width:{{ pct }}%"></i></div>
+                    </td>
+                    <td>
+                        {% if not t.active %}<span class="pill revoked">Revoked</span>
+                        {% elif t.remaining == 0 %}<span class="pill out">Exhausted</span>
+                        {% else %}<span class="pill active">Active</span>{% endif %}
+                    </td>
+                    <td class="stat">
+                        {% if t.last_use %}
+                            by <b style="color:var(--text)">{{ t.last_use.by }}</b><br>
+                            <span class="mono">{{ t.last_use.target or '—' }}</span>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td style="text-align:right">
+                        {% if t.active %}
+                        <form method="post" action="/tokens/{{ t.id }}/revoke" style="display:inline">
+                            <button class="icon-btn" type="submit" onclick="return confirm('Revoke this token? It can no longer be used for scans.')">Revoke</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6"><div class="empty-state"><div class="big">No tokens issued</div>Generate one on the left to authorize remote scans.</div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function copyTok(el) {
+    navigator.clipboard?.writeText(el.textContent.trim());
+    const prev = el.textContent;
+    el.textContent = 'Copied ✓';
+    setTimeout(() => { el.textContent = prev; }, 1000);
+}
+</script>
+{% endblock %}

@@ -1,0 +1,22 @@
+[Unit]
+Description=VulnSense (FastAPI via gunicorn/uvicorn)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=vulnsense
+WorkingDirectory=/opt/vulnsense
+EnvironmentFile=/opt/vulnsense/.env
+# Without this, Python block-buffers stdout when it isn't a tty, so print()
+# output (including the [audit] break-glass trail) never reaches journalctl.
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/vulnsense/.venv/bin/gunicorn main:app \
+  -k uvicorn.workers.UvicornWorker -w 1 --bind 127.0.0.1:8000 \
+  --timeout 300 --graceful-timeout 300 \
+  --access-logfile - --error-logfile -
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

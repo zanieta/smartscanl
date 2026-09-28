@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Web Scan{% endblock %}
+{% block style %}
+    .scan-grid { display: grid; grid-template-columns: 340px 1fr; gap: 1.25rem; align-items: start; }
+    @media (max-width: 900px) { .scan-grid { grid-template-columns: 1fr; } }
+    .form-group { margin-bottom: 1.05rem; }
+    label { display: block; margin-bottom: 0.4rem; font-size: 0.8rem; font-weight: 600; }
+    input, select {
+        width: 100%; padding: 0.7rem 0.8rem; background: #fbfcfe; border: 1px solid var(--border-strong);
+        border-radius: 9px; color: var(--text); font-size: 0.92rem; font-family: inherit;
+        transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    input::placeholder { color: #aab0c2; }
+    input:focus, select:focus { outline: none; border-color: var(--brand-green); box-shadow: 0 0 0 3px rgba(140,198,63,0.2); }
+    .hint { font-size: 0.74rem; color: var(--text-muted); margin-top: 0.4rem; }
+    form .btn { width: 100%; margin-top: 0.5rem; }
+    #loader { display: none; align-items: center; gap: 0.6rem; margin-top: 1rem; color: var(--text-muted); font-size: 0.85rem; }
+    tbody tr { cursor: pointer; transition: background 0.15s; }
+    tbody tr:hover { background: var(--surface-hover); }
+{% endblock %}
+
+{% block body %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Web Scan</h1>
+        <div class="page-sub">Passive checks on headers, cookies &amp; TLS — ZAP-style, plus local CVE matching.</div>
+    </div>
+</div>
+
+<div class="scan-grid">
+    <section class="card card-pad">
+        <h2 class="section">New Web Scan</h2>
+        <form id="scan-form">
+            <div class="form-group">
+                <label for="url">Target URL</label>
+                <input type="text" id="url" placeholder="https://example.com" required>
+                <div class="hint">Passive only — reads headers, cookies &amp; TLS. Scan sites you own or are authorized to test.</div>
+            </div>
+            <div class="form-group">
+                <label for="token">Scan token</label>
+                {% if tokens %}
+                <select id="token" required>
+                    <option value="" disabled selected>Select a token…</option>
+                    {% for t in tokens %}<option value="{{ t.value }}">{{ t.client }} — {{ t.value }} ({{ t.remaining }} left)</option>{% endfor %}
+                </select>
+                <div class="hint">Each scan spends one use of the selected client's token.</div>
+                {% else %}
+                <div class="hint" style="color:#c0383c">No active tokens available.{% if user and user.role == 'admin' %} <a href="/tokens" style="color:var(--brand-navy);font-weight:700">Generate one →</a>{% else %} Ask an admin to issue one.{% endif %}</div>
+                {% endif %}
+            </div>
+            <button type="submit" class="btn" id="submit-btn" {% if not tokens %}disabled{% endif %}>Run Passive Scan</button>
+            <div id="loader"><span class="spinner"></span> Scanning… please wait.</div>
+        </form>
+    </section>
+
+    <section class="card card-pad">
+        <h2 class="section">Scan History</h2>
+        <table>
+            <thead><tr><th>Site / Server</th><th>Summary</th><th>Critical</th><th>High</th><th>Findings</th></tr></thead>
+            <tbody id="history-body"></tbody>
+        </table>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/app.js"></script>
+<script>
+const urlInput = document.getElementById('url');
+
+async function loadHistory() {
+    const tbody = document.getElementById('history-body');
+    try {
+        const data = await (await fetch('/api/web-scans')).json();
+        const scans = data.scans || [];
+        if (!scans.length) {
+            tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><div class="big">No web scans yet</div>Start a passive scan on the left.</div></td></tr>';
+            return;
+        }
+        tbody.innerHTML = scans.slice().reverse().map(s => {
+            const crit = s.critical_count > 0 ? `<span class="badge sev-critical"><span class="d"></span>${s.critical_count}</span>` : '0';
+            const high = s.high_count > 0 ? `<span class="badge sev-high"><span class="d"></span>${s.high_count}</span>` : '0';
+            const n = (s.findings ? s.findings.length : 0);
+            return `<tr onclick="location.href='/web-report/${s.scan_id}/html'">
+                <td><div class="mono" style="font-weight:600;color:var(--brand-navy)">${VulnSense.esc(s.host)}</div><div class="meta" style="font-size:0.78rem;color:var(--text-muted)">${VulnSense.esc(s.server)}</div></td>
+                <td style="max-width:320px;color:var(--text-muted)"><small>${VulnSense.esc((s.summary || 'Analysis completed').substring(0, 70))}…</small></td>
+                <td>${crit}</td><td>${high}</td><td>${n}</td>
+            </tr>`;
+        }).join('');
+    } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state">Could not load history.</div></td></tr>';
+    }
+}
+
+document.getElementById('scan-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('submit-btn');
+    const loader = document.getElementById('loader');
+    const tokenEl = document.getElementById('token');
+    const token = tokenEl ? tokenEl.value : '';
+    if (!token) { alert('Select a scan token first.'); return; }
+    btn.disabled = true; btn.textContent = 'Scanning…'; loader.style.display = 'flex';
+    try {
+        const res = await fetch('/scan-web', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: urlInput.value, token })
+        });
+        if (res.ok) { const d = await res.json(); location.href = `/web-report/${d.scan_id}/html`; }
+        else { const err = await res.json(); alert('Error: ' + (err.detail || 'Scan failed')); }
+    } catch (err) { alert('Network error occurred'); }
+    finally { btn.disabled = false; btn.textContent = 'Run Passive Scan'; loader.style.display = 'none'; loadHistory(); }
+});
+
+loadHistory();
+</script>
+{% endblock %}

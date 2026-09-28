@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Reports{% endblock %}
+{% block style %}
+    tbody tr:hover { background: var(--surface-hover); }
+    .scan-target { font-weight: 600; color: var(--brand-navy); }
+    .dots { display: inline-flex; gap: 0.3rem; align-items: center; }
+    .dots .dt { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.74rem; font-weight: 700; }
+    .dots .dt i { width: 8px; height: 8px; border-radius: 50%; }
+    .act { display: inline-flex; gap: 0.45rem; }
+    .act a { font-size: 0.76rem; font-weight: 700; padding: 0.38rem 0.7rem; border-radius: 8px; text-decoration: none; }
+    .act .html { background: rgba(17,23,140,0.08); color: var(--brand-navy); }
+    .act .html:hover { background: rgba(17,23,140,0.14); }
+    .act .pdf { background: var(--brand-navy); color: #fff; }
+    .act .pdf:hover { background: var(--brand-navy-light); }
+    .act .del { font-size: 0.76rem; font-weight: 700; padding: 0.38rem 0.7rem; border-radius: 8px; border: none; cursor: pointer; font-family: inherit; background: rgba(220,38,38,0.1); color: #b91c1c; }
+    .act .del:hover { background: rgba(220,38,38,0.18); }
+    .act .del:disabled { opacity: 0.5; cursor: default; }
+{% endblock %}
+
+{% block body %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Reports</h1>
+        <div class="page-sub">Completed scans, ready to view or export as a branded PDF.</div>
+    </div>
+    <div style="display:flex; gap:0.6rem;">
+        <a href="/pc" class="btn btn-ghost">+ PC Scan</a>
+        <a href="/web" class="btn">+ Web Scan</a>
+    </div>
+</div>
+
+<section class="card card-pad">
+    <table>
+        <thead><tr><th>Scan</th><th>Target</th><th>Severity</th><th>Findings</th><th style="text-align:right">Report</th></tr></thead>
+        <tbody id="reports-body"></tbody>
+    </table>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/app.js"></script>
+<script>
+const IS_ADMIN = {{ 'true' if user and user.role == 'admin' else 'false' }};
+
+function sevDots(s) {
+    const sev = { critical: 0, high: 0, medium: 0, low: 0, accepted: 0 };
+    (s.findings || []).forEach(f => { const b = VulnSense.bucketOf(f); if (b in sev) sev[b]++; });
+    const map = [['critical', 'var(--critical)'], ['high', 'var(--high)'], ['medium', 'var(--medium)'], ['low', 'var(--low)'], ['accepted', 'var(--accepted)']];
+    const parts = map.filter(([k]) => sev[k] > 0).map(([k, c]) => `<span class="dt" style="color:${c}"><i style="background:${c}"></i>${sev[k]}</span>`);
+    return parts.length ? `<span class="dots">${parts.join('')}</span>` : '<span class="cvss-pill" style="color:var(--text-faint)">—</span>';
+}
+
+(async function () {
+    const scans = await VulnSense.loadAllScans();
+    const tbody = document.getElementById('reports-body');
+    if (!scans.length) {
+        tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><div class="big">No reports yet</div>Run a PC or Web scan to generate your first report.</div></td></tr>';
+        return;
+    }
+    tbody.innerHTML = scans.slice().reverse().map(s => `
+        <tr>
+            <td><span class="type-chip ${s.type === 'PC' ? 'type-pc' : 'type-web'}" style="font-size:0.64rem;font-weight:800;padding:0.18rem 0.45rem;border-radius:6px;background:${s.type === 'PC' ? 'rgba(17,23,140,0.1)' : 'rgba(140,198,63,0.18)'};color:${s.type === 'PC' ? 'var(--brand-navy)' : 'var(--brand-green-dark)'}">${s.type}</span></td>
+            <td><div class="scan-target mono" style="font-size:0.84rem">${VulnSense.esc(s.label)}</div><div class="meta" style="font-size:0.76rem;color:var(--text-muted)">${VulnSense.esc(s.subLabel)}</div></td>
+            <td>${sevDots(s)}</td>
+            <td>${(s.findings || []).length}</td>
+            <td style="text-align:right"><span class="act"><a class="html" href="${s.reportUrl}">View</a><a class="pdf" href="${s.pdfUrl}" target="_blank">PDF</a>${IS_ADMIN ? `<button class="del" data-id="${VulnSense.esc(s.scan_id)}">Delete</button>` : ''}</span></td>
+        </tr>`).join('');
+
+    // Admin-only: delete a scan, then reload so the list reflects server state.
+    tbody.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.del');
+        if (!btn) return;
+        if (!confirm('Delete this scan? This cannot be undone.')) return;
+        btn.disabled = true;
+        try {
+            const res = await fetch('/api/scans/' + encodeURIComponent(btn.dataset.id), { method: 'DELETE' });
+            if (res.ok) { location.reload(); return; }
+            alert('Delete failed (' + res.status + ')');
+        } catch (err) {
+            alert('Delete failed: ' + err);
+        }
+        btn.disabled = false;
+    });
+})();
+</script>
+{% endblock %}
