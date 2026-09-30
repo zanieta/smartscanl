@@ -65,7 +65,7 @@
     <div class="info-item"><span class="info-label">HTTPS</span><span class="info-value">{{ "Yes" if report.https else "No" }}{% if report.redirects_to_https is false %} (no HTTP redirect){% endif %}</span></div>
     <div class="info-item"><span class="info-label">TLS Issuer</span><span class="info-value">{{ report.tls_issuer }}</span></div>
     <div class="info-item"><span class="info-label">TLS Expires</span><span class="info-value mono">{{ report.tls_expiry }}</span></div>
-    <div class="info-item"><span class="info-label">Config Issues / CVEs</span><span class="info-value">{{ report.checks_flagged }} / {{ report.cves_found }}</span></div>
+    <div class="info-item"><span class="info-label">Checks Flagged / Version-matched CVEs</span><span class="info-value">{{ report.checks_flagged }} / {{ report.cves_found }}</span></div>
     <div class="info-item"><span class="info-label">Critical / High</span><span class="info-value">{{ report.critical_count }} / {{ report.high_count }}</span></div>
 </div>
 
@@ -91,6 +91,7 @@
     <div class="findings-empty">No findings. No passive issues or matched CVEs for this site.</div>
     {% endfor %}
 </div>
+{% include 'review_candidates.html' %}
 {% endblock %}
 
 {% block scripts %}

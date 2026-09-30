@@ -85,9 +85,10 @@
         </div>
     </article>
     {% else %}
-    <div class="findings-empty">No vulnerabilities found. The host is clear for the scanned products.</div>
+    <div class="findings-empty">No version-matched findings. This does not establish that the host is secure; review coverage and uncertain candidates below.</div>
     {% endfor %}
 </div>
+{% include 'review_candidates.html' %}
 {% endblock %}
 
 {% block scripts %}

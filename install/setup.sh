@@ -220,6 +220,10 @@ else
 fi
 
 # ---- 9. systemd services ------------------------------------------------------
+if ! sudo -u "${APP_USER}" bash -c "cd '${APP_DIR}' && ./.venv/bin/python -m scripts.update_cves --check-only --require-metadata"; then
+    warn "CVE database is not ready: sync may be missing/stale or CPE metadata incomplete. Run a full sync and recheck before relying on CVE matching."
+fi
+
 log "Installing systemd units (app + weekly CVE sync)..."
 install -m 644 "${APP_DIR}/deploy/vulnsense.service"      /etc/systemd/system/vulnsense.service
 install -m 644 "${APP_DIR}/deploy/vulnsense-sync.service" /etc/systemd/system/vulnsense-sync.service

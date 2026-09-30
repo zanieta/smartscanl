@@ -22,8 +22,8 @@ def match_version(row, detected: str | None) -> tuple[str, str]:
         return 'uncertain', 'No reliable software version was supplied or detected.'
     if not metadata:
         return 'uncertain', 'Legacy NVD record needs refresh to recover version boundaries.'
-    if metadata.get('vulnerable') is not True or metadata.get('context_required'):
-        return 'uncertain', 'Additional NVD configuration conditions require verification.'
+    if metadata.get('negated_context'):
+        return 'uncertain', 'Negated NVD configuration requires verification.'
     unknown = False
     constrained = False
     if row.version and row.version not in ('*', '-'):
@@ -46,6 +46,8 @@ def match_version(row, detected: str | None) -> tuple[str, str]:
             unknown = True
         elif comparison not in allowed:
             return 'excluded', 'Detected version is outside the affected range.'
+    if metadata.get('vulnerable') is not True or metadata.get('context_required'):
+        return 'uncertain', 'Additional NVD configuration conditions require verification.'
     if unknown or not constrained or row.version == '-':
         return 'uncertain', 'Version constraints are absent or require vendor-specific comparison.'
     return 'version_match', 'Version matches NVD criteria; applicability still requires confirmation.'

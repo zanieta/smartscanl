@@ -29,17 +29,19 @@ def parse_cpe_23(cpe_str: str) -> dict:
     return None
 
 
-def iter_cpe_matches(node: dict, context_required: bool = False):
+def iter_cpe_matches(node: dict, context_required: bool = False, negated: bool = False):
+    negated = negated or bool(node.get('negate'))
     context_required = context_required or bool(node.get('negate')) or node.get('operator') == 'AND'
     for match in node.get('cpeMatch', []):
         criteria = dict(match)
+        criteria['negated_context'] = negated
         parts = re.split(r"(?<!\\):", str(match.get('criteria', '')))
         criteria['context_required'] = context_required or any(
             value not in ('*', '') for value in parts[6:]
         )
         yield criteria
     for child in node.get('nodes', []) + node.get('children', []):
-        yield from iter_cpe_matches(child, context_required)
+        yield from iter_cpe_matches(child, context_required, negated)
 
 def fetch_cves_page(start_index: int, extra_params: dict | None = None) -> dict:
     headers = {"apiKey": NVD_API_KEY} if NVD_API_KEY else {}

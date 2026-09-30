@@ -8,6 +8,7 @@ Pure-Python via reportlab (no native deps -- Windows-friendly).
 `build_pdf(report, scan_type)` returns the PDF as bytes.
 """
 import os
+from html import escape
 from io import BytesIO
 from datetime import datetime
 from typing import Dict, Any, List
@@ -197,7 +198,7 @@ def _coverage_stats(n_targets: int, n_vulns: int) -> Table:
     num = ParagraphStyle("covnum", fontName="Helvetica-Bold", fontSize=24, textColor=NAVY, leading=26)
     lab = ParagraphStyle("covlab", fontName="Helvetica", fontSize=8.5, textColor=MUTED, leading=12)
     cell1 = [Paragraph(str(n_targets), num), Spacer(1, 1.5 * mm), Paragraph("Total Targets", lab)]
-    cell2 = [Paragraph(str(n_vulns), num), Spacer(1, 1.5 * mm), Paragraph("Total Vulnerabilities", lab)]
+    cell2 = [Paragraph(str(n_vulns), num), Spacer(1, 1.5 * mm), Paragraph("Findings for Review", lab)]
     t = Table([[cell1, cell2]], colWidths=[82 * mm, 82 * mm])
     t.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -323,7 +324,7 @@ def build_pdf(report: Dict[str, Any], scan_type: str = "web") -> bytes:
         "potential vulnerabilities, classified by severity. Higher severity indicates a greater risk to "
         "the confidentiality, integrity, or availability of the target.", styles["Body"]))
     story.append(Spacer(1, 5 * mm))
-    story.append(Paragraph("1.1  Total Vulnerabilities", styles["H2"]))
+    story.append(Paragraph("1.1  Findings for Review", styles["H2"]))
     story.append(Paragraph(
         "Below are the total number of vulnerabilities found by severity. Critical vulnerabilities are the "
         "most severe and should be evaluated first.", styles["Small"]))
@@ -337,6 +338,12 @@ def build_pdf(report: Dict[str, Any], scan_type: str = "web") -> bytes:
         f"This report includes findings for the target below. Scans run: {meta['scans_run']}.", styles["Small"]))
     story.append(Spacer(1, 3 * mm))
     story.append(_coverage_stats(1, len(findings)))
+    if report.get('report_schema_version') == 2:
+        story.append(Paragraph(escape(report['summary']), styles['Body']))
+        for warning in report.get('data_warnings', []):
+            story.append(Paragraph('Database coverage warning: ' + escape(warning), styles['Small']))
+    else:
+        story.append(Paragraph('Historical report: legacy totals. Rescan for evidence-aware filtering.', styles['Body']))
     story.append(Spacer(1, 4 * mm))
     if scan_type == "web":
         story.append(Paragraph(
@@ -448,6 +455,20 @@ def build_pdf(report: Dict[str, Any], scan_type: str = "web") -> bytes:
         story.append(Spacer(1, 4 * mm))
 
     story.append(PageBreak())
+
+    # Review-only entries never enter the severity chart or main finding count.
+    for label, key in [('Uncertain CVE candidates', 'uncertain_findings'),
+                       ('Informational notes', 'informational_findings')]:
+        entries = report.get(key, [])
+        if not entries:
+            continue
+        _h1(story, styles, label + ' - excluded from totals')
+        for entry in entries:
+            story.append(Paragraph(escape(str(entry.get('cve_id', ''))), styles['H2']))
+            story.append(Paragraph(escape(str(entry.get('description', ''))), styles['Body']))
+            story.append(Paragraph(escape(str(entry.get('risk_explanation', ''))), styles['Body']))
+            story.append(Paragraph(escape(str(entry.get('fix', ''))), styles['Body']))
+        story.append(PageBreak())
 
     # ---------- 4. Glossary ----------
     _h1(story, styles, "4  Glossary")

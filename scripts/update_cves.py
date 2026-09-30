@@ -20,7 +20,8 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import sync.nvd_sync as nvd
-from db.models import CVE, SyncLog
+from db.models import CVE, SyncLog, CPEMatch
+from sqlalchemy import cast, String, or_
 from db.session import SessionLocal
 
 APP_DIR = Path(__file__).resolve().parent.parent
@@ -93,6 +94,14 @@ def choose_mode(db) -> str:
     return "incremental"
 
 
+def metadata_ready(db) -> bool:
+    total = db.query(CPEMatch).count()
+    missing = db.query(CPEMatch).filter(or_(CPEMatch.match_criteria.is_(None),
+        cast(CPEMatch.match_criteria, String).in_(['null', '{}']))).count()
+    log.info("CPE metadata: %d rows, %d missing; populated metadata does not guarantee applicability", total, missing)
+    return total > 0 and missing == 0
+
+
 def run_update(db, mode: str) -> bool:
     """Run the sync and report whether it actually succeeded.
 
@@ -127,6 +136,8 @@ def main(argv=None) -> int:
         description="Sync the CVE database from NVD and report staleness.")
     parser.add_argument("--check-only", action="store_true",
                         help="Report staleness and exit; performs no network I/O.")
+    parser.add_argument("--require-metadata", action="store_true",
+                        help="With --check-only, also require nonempty CPE data and version metadata.")
     parser.add_argument("--stale-days", type=float, default=DEFAULT_STALE_DAYS,
                         help=f"Age above which data is stale (default {DEFAULT_STALE_DAYS:g}).")
     args = parser.parse_args(argv)
@@ -144,7 +155,10 @@ def main(argv=None) -> int:
         log.info("CVE rows: %s", f"{db.query(CVE).count():,}")
 
         if args.check_only:
-            return 0 if (age is not None and age <= args.stale_days) else 1
+            ready = db.query(CVE).count() > 0
+            if args.require_metadata:
+                ready = metadata_ready(db) and ready
+            return 0 if (ready and age is not None and age <= args.stale_days) else 1
 
         if not os.getenv("NVD_API_KEY"):
             log.warning(

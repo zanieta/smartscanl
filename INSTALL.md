@@ -143,6 +143,16 @@ Use `COOKIE_SECURE=1` when HTTPS is configured. Never commit server `.env` files
 
 ## Refresh the CVE database after this release
 
+Verify readiness (read-only; a nonzero exit means incomplete/stale data):
+
+```bash
+sudo -u vulnsense bash -c 'cd /opt/vulnsense && .venv/bin/python -m scripts.update_cves --check-only --require-metadata'
+```
+
+New reports separate uncertain CVEs and informational notes from main totals.
+Populated metadata is not proof of exploitability. Historical reports retain
+their original counts; rerun scans after upgrading to obtain corrected reports.
+
 Existing CVE records need a **one-time full refresh** to populate lossless
 version boundaries. A normal incremental update does not backfill unchanged
 records. Historical reports are not rewritten. Run outside the app-update window:

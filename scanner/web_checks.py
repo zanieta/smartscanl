@@ -8,6 +8,7 @@ disclosure, and TLS expiry.
 for the local CVE database (mirrors db/queries.os_to_target).
 """
 import re
+import hashlib
 from typing import Dict, Any, List, Tuple
 
 # Security headers we expect a hardened site to send: header -> (id, title, severity, fix)
@@ -107,11 +108,13 @@ def run_passive_checks(parsed: Dict[str, Any]) -> List[Dict[str, Any]]:
             })
 
     # 2. Cookie flags
-    for cookie in parsed.get("cookies", []):
+    for cookie_index, cookie in enumerate(parsed.get("cookies", [])):
         name = cookie["name"]
+        cookie_key = hashlib.sha256(f"{name}:{cookie_index}".encode()).hexdigest()[:16]
+        js_readable_csrf = name.lower() in {"xsrf-token", "csrftoken"}
         if parsed.get("https") and not cookie["secure"]:
             findings.append({
-                "id": "WEB-COOKIE-SECURE", "title": f"Cookie '{name}' missing Secure flag",
+                "id": f"WEB-COOKIE-SECURE:{cookie_key}", "title": f"Cookie '{name}' missing Secure flag",
                 "severity": "Medium",
                 "evidence": f"Set-Cookie for '{name}' has no Secure attribute on an HTTPS site.",
                 "fix": f"Set the Secure attribute on the '{name}' cookie.",
@@ -119,15 +122,15 @@ def run_passive_checks(parsed: Dict[str, Any]) -> List[Dict[str, Any]]:
             })
         if not cookie["httponly"]:
             findings.append({
-                "id": "WEB-COOKIE-HTTPONLY", "title": f"Cookie '{name}' missing HttpOnly flag",
-                "severity": "Low",
+                "id": f"WEB-COOKIE-HTTPONLY:{cookie_key}", "title": f"Cookie '{name}' missing HttpOnly flag",
+                "severity": "Informational" if js_readable_csrf else "Low",
                 "evidence": f"Set-Cookie for '{name}' has no HttpOnly attribute (may be by design if JS must read it).",
                 "fix": f"Set HttpOnly on '{name}' unless client-side JavaScript must read it.",
                 "category": "Cookie",
             })
         if not cookie["samesite"]:
             findings.append({
-                "id": "WEB-COOKIE-SAMESITE", "title": f"Cookie '{name}' missing SameSite attribute",
+                "id": f"WEB-COOKIE-SAMESITE:{cookie_key}", "title": f"Cookie '{name}' missing SameSite attribute",
                 "severity": "Low",
                 "evidence": f"Set-Cookie for '{name}' has no SameSite attribute.",
                 "fix": f"Set SameSite=Lax (or Strict) on the '{name}' cookie to reduce CSRF risk.",
@@ -148,7 +151,7 @@ def run_passive_checks(parsed: Dict[str, Any]) -> List[Dict[str, Any]]:
     for label, value in (("Server", parsed.get("server", "")), ("X-Powered-By", parsed.get("powered_by", ""))):
         if value and _BANNER_RE.search(value):
             findings.append({
-                "id": "WEB-BANNER", "title": f"Software version disclosed via {label}",
+                "id": f"WEB-BANNER:{label.lower()}", "title": f"Software version disclosed via {label}",
                 "severity": "Low",
                 "evidence": f"{label}: {value}",
                 "fix": f"Suppress or genericize the {label} banner so exact versions aren't exposed.",
