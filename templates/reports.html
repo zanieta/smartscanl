@@ -63,24 +63,11 @@ function sevDots(s) {
             <td><div class="scan-target mono" style="font-size:0.84rem">${VulnSense.esc(s.label)}</div><div class="meta" style="font-size:0.76rem;color:var(--text-muted)">${VulnSense.esc(s.subLabel)}</div></td>
             <td>${sevDots(s)}</td>
             <td>${(s.findings || []).length}</td>
-            <td style="text-align:right"><span class="act"><a class="html" href="${s.reportUrl}">View</a><a class="pdf" href="${s.pdfUrl}" target="_blank">PDF</a>${IS_ADMIN ? `<button class="del" data-id="${VulnSense.esc(s.scan_id)}">Delete</button>` : ''}</span></td>
+            <td style="text-align:right"><span class="act"><a class="html" href="${s.reportUrl}">View</a><a class="pdf" href="${s.pdfUrl}" target="_blank">PDF</a>${IS_ADMIN ? `<button class="del" data-delete-scan="${VulnSense.esc(s.scan_id)}">Delete</button>` : ''}</span></td>
         </tr>`).join('');
 
     // Admin-only: delete a scan, then reload so the list reflects server state.
-    tbody.addEventListener('click', async (e) => {
-        const btn = e.target.closest('.del');
-        if (!btn) return;
-        if (!confirm('Delete this scan? This cannot be undone.')) return;
-        btn.disabled = true;
-        try {
-            const res = await fetch('/api/scans/' + encodeURIComponent(btn.dataset.id), { method: 'DELETE' });
-            if (res.ok) { location.reload(); return; }
-            alert('Delete failed (' + res.status + ')');
-        } catch (err) {
-            alert('Delete failed: ' + err);
-        }
-        btn.disabled = false;
-    });
+    VulnSense.bindScanDeletion(tbody, () => location.reload());
 })();
 </script>
 {% endblock %}

@@ -1,5 +1,7 @@
 import uuid
 import os
+import logging
+import secrets
 from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
 
@@ -104,9 +106,17 @@ class RiskStatusRequest(BaseModel):
 
 
 def _page(request: Request, name: str, active: str, user, **extra):
-    ctx = {"active": active, "user": user}
+    request.session.setdefault("csrf_token", secrets.token_urlsafe(32))
+    ctx = {"active": active, "user": user, "csrf_token": request.session["csrf_token"]}
     ctx.update(extra)
     return templates.TemplateResponse(request=request, name=name, context=ctx)
+
+
+def _check_csrf(request: Request) -> None:
+    expected = request.session.get("csrf_token", "")
+    supplied = request.headers.get("x-csrf-token", "")
+    if not expected or not secrets.compare_digest(expected, supplied):
+        raise HTTPException(status_code=403, detail="Reload the page and try again.")
 
 
 def _recount(report: dict) -> None:
@@ -536,6 +546,22 @@ def network_discovery_page(request: Request):
                      ranges=os.getenv("NETWORK_DISCOVERY_CIDRS", ""))
 
 
+@app.post("/api/discovery", status_code=202)
+def start_discovery(request: Request, tasks: BackgroundTasks,
+                    user: User = Depends(require_admin_api)):
+    _check_csrf(request)
+    from scripts import discover_network
+    try:
+        run_id = discover_network.enqueue()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    if run_id is None:
+        raise HTTPException(status_code=409, detail="Discovery is already queued or running.")
+    tasks.add_task(discover_network.run, run_id=run_id)
+    logging.getLogger(__name__).info("Discovery requested run=%s admin=%s", run_id, user.id)
+    return {"run_id": run_id}
+
+
 # ===================== scans (login + token required) =====================
 
 @app.post("/scan")
@@ -734,14 +760,13 @@ async def api_scans_by_client(user: User = Depends(require_user_api)):
 
 
 @app.delete("/api/scans/{scan_id}")
-async def delete_scan(scan_id: str, user: User = Depends(require_admin_api)):
+def delete_scan(scan_id: str, request: Request, user: User = Depends(require_admin_api)):
     """Hard-delete a scan: evict it from the in-memory cache and the DB. Admin only.
 
     scan_ids are unique across host and web scans, so we check both caches and the
     single persisted row. 404 only if the id is unknown everywhere.
     """
-    in_cache = reports_db.pop(scan_id, None) is not None
-    in_cache = web_reports_db.pop(scan_id, None) is not None or in_cache
+    _check_csrf(request)
 
     db = SessionLocal()
     try:
@@ -749,10 +774,14 @@ async def delete_scan(scan_id: str, user: User = Depends(require_admin_api)):
     finally:
         db.close()
 
+    # Never evict a report before its database transaction succeeds.
+    in_cache = reports_db.pop(scan_id, None) is not None
+    in_cache = web_reports_db.pop(scan_id, None) is not None or in_cache
+
     if not in_cache and not in_db:
         raise HTTPException(status_code=404, detail="Scan not found")
 
-    print(f"[audit] SCAN DELETED: '{scan_id}' by '{user.username}' at {_now()}", flush=True)
+    logging.getLogger(__name__).info("Scan deleted scan=%s admin=%s", scan_id, user.id)
     return {"ok": True}
 
 

@@ -259,7 +259,11 @@ def _meta(report: Dict[str, Any], scan_type: str) -> Dict[str, str]:
 def build_pdf(report: Dict[str, Any], scan_type: str = "web") -> bytes:
     """Render a scan report dict to a branded PDF. Returns bytes."""
     styles = _styles()
-    findings = report.get("findings", [])
+    # Export only actionable entries, including when downloading a legacy scan.
+    findings = [f for f in report.get("findings", [])
+                if f.get("match_status") not in {"uncertain", "excluded"}
+                and "CVE applicability: uncertain." not in str(f.get("risk_explanation", ""))
+                and str(f.get("severity", "")).lower() not in {"informational", "none"}]
     counts = _severity_counts(findings)
     meta = _meta(report, scan_type)
     today = datetime.now()
@@ -338,22 +342,17 @@ def build_pdf(report: Dict[str, Any], scan_type: str = "web") -> bytes:
         f"This report includes findings for the target below. Scans run: {meta['scans_run']}.", styles["Small"]))
     story.append(Spacer(1, 3 * mm))
     story.append(_coverage_stats(1, len(findings)))
-    if report.get('report_schema_version') == 2:
-        story.append(Paragraph(escape(report['summary']), styles['Body']))
-        for warning in report.get('data_warnings', []):
-            story.append(Paragraph('Database coverage warning: ' + escape(warning), styles['Small']))
-    else:
-        story.append(Paragraph('Historical report: legacy totals. Rescan for evidence-aware filtering.', styles['Body']))
+    cve_count = sum(str(f.get('cve_id', '')).startswith('CVE-') for f in findings)
     story.append(Spacer(1, 4 * mm))
     if scan_type == "web":
         story.append(Paragraph(
-            f"Config issues flagged: {report.get('checks_flagged', 0)}  |  "
-            f"CVEs matched (local DB): {report.get('cves_found', 0)}  |  "
+            f"Config issues flagged: {len(findings) - cve_count}  |  "
+            f"CVEs matched (local DB): {cve_count}  |  "
             f"HTTPS: {'Yes' if report.get('https') else 'No'}  |  "
             f"TLS issuer: {report.get('tls_issuer', 'Unknown')}", styles["Small"]))
     else:
         story.append(Paragraph(
-            f"CVEs matched (local DB): {report.get('cves_found', 0)}  |  "
+            f"CVEs matched (local DB): {cve_count}  |  "
             f"Services detected: {len(report.get('services', []))}", styles["Small"]))
     story.append(PageBreak())
 
@@ -420,7 +419,7 @@ def build_pdf(report: Dict[str, Any], scan_type: str = "web") -> bytes:
     story.append(Spacer(1, 2 * mm))
 
     if not findings:
-        story.append(Paragraph("No vulnerabilities were identified.", styles["Body"]))
+        story.append(Paragraph("No reportable findings from the available scan evidence.", styles["Body"]))
     for idx, f in enumerate(findings, 1):
         fid = f.get("cve_id", "Finding")
         accepted = str(f.get("status", "open")).lower() == "accepted"
@@ -455,20 +454,6 @@ def build_pdf(report: Dict[str, Any], scan_type: str = "web") -> bytes:
         story.append(Spacer(1, 4 * mm))
 
     story.append(PageBreak())
-
-    # Review-only entries never enter the severity chart or main finding count.
-    for label, key in [('Uncertain CVE candidates', 'uncertain_findings'),
-                       ('Informational notes', 'informational_findings')]:
-        entries = report.get(key, [])
-        if not entries:
-            continue
-        _h1(story, styles, label + ' - excluded from totals')
-        for entry in entries:
-            story.append(Paragraph(escape(str(entry.get('cve_id', ''))), styles['H2']))
-            story.append(Paragraph(escape(str(entry.get('description', ''))), styles['Body']))
-            story.append(Paragraph(escape(str(entry.get('risk_explanation', ''))), styles['Body']))
-            story.append(Paragraph(escape(str(entry.get('fix', ''))), styles['Body']))
-        story.append(PageBreak())
 
     # ---------- 4. Glossary ----------
     _h1(story, styles, "4  Glossary")

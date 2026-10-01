@@ -56,6 +56,14 @@ systemctl is-active --quiet vulnsense-sync.service && die "CVE sync started duri
 systemctl stop vulnsense.service
 STOPPED=1
 
+# Retire scheduled discovery on upgraded devices; never restart its timer.
+if systemctl cat vulnsense-discovery.timer >/dev/null 2>&1; then
+    systemctl disable --now vulnsense-discovery.timer
+fi
+if systemctl cat vulnsense-discovery.service >/dev/null 2>&1; then
+    systemctl stop vulnsense-discovery.service
+fi
+
 printf '[update] Backing up application, settings and database to %s\n' "$BACKUP"
 # Includes the old virtualenv and .env; root-only backup may contain sensitive data.
 tar -czf "$BACKUP/application.tar.gz" -C "$APP" .

@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}PC Scan{% endblock %}
 {% block style %}
-    .scan-grid { display: grid; grid-template-columns: 340px 1fr; gap: 1.25rem; align-items: start; }
+    .scan-grid { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 1.25rem; align-items: start; }
+    .scan-grid > section { min-width: 0; }
     @media (max-width: 900px) { .scan-grid { grid-template-columns: 1fr; } }
     .form-group { margin-bottom: 1.05rem; }
     label { display: block; margin-bottom: 0.4rem; font-size: 0.8rem; font-weight: 600; }
@@ -70,10 +71,10 @@
 
     <section class="card card-pad">
         <h2 class="section">Scan History</h2>
-        <table>
-            <thead><tr><th>Target / OS</th><th>Summary</th><th>Critical</th><th>High</th><th>CVEs</th></tr></thead>
+        <div class="scan-history-table"><table>
+            <thead><tr><th>Target / OS</th><th>Summary</th><th>Critical</th><th>High</th><th>CVEs</th><th>Actions</th></tr></thead>
             <tbody id="history-body"></tbody>
-        </table>
+        </table></div>
     </section>
 </div>
 {% endblock %}
@@ -85,6 +86,8 @@ const presetSelect = document.getElementById('preset');
 const targetInput = document.getElementById('target');
 const vendorInput = document.getElementById('vendor');
 const productInput = document.getElementById('product');
+const IS_ADMIN = {{ 'true' if user and user.role == 'admin' else 'false' }};
+VulnSense.bindScanDeletion(document.getElementById('history-body'), loadHistory);
 
 presetSelect.addEventListener('change', (e) => {
     const v = e.target.value;
@@ -105,10 +108,11 @@ async function loadHistory() {
         tbody.innerHTML = scans.slice().reverse().map(s => {
             const crit = s.critical_count > 0 ? `<span class="badge sev-critical"><span class="d"></span>${s.critical_count}</span>` : '0';
             const high = s.high_count > 0 ? `<span class="badge sev-high"><span class="d"></span>${s.high_count}</span>` : '0';
-            return `<tr onclick="location.href='/report/${s.scan_id}/html'">
+            return `<tr>
                 <td><div class="mono" style="font-weight:600;color:var(--brand-navy)">${VulnSense.esc(s.host)}</div><div class="meta" style="font-size:0.78rem;color:var(--text-muted)">OS: ${VulnSense.esc(s.os)}</div></td>
                 <td style="max-width:320px;color:var(--text-muted)"><small>${VulnSense.esc((s.summary || 'Analysis completed').substring(0, 70))}…</small></td>
                 <td>${crit}</td><td>${high}</td><td>${s.cves_found}</td>
+                <td><a class="btn btn-ghost" href="/report/${encodeURIComponent(s.scan_id)}/html">View</a>${IS_ADMIN ? `<button class="btn btn-ghost" data-delete-scan="${VulnSense.esc(s.scan_id)}">Delete</button>` : ''}</td>
             </tr>`;
         }).join('');
     } catch (e) {

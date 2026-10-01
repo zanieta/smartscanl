@@ -3,11 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token | default('') }}">
     <title>{% block title %}SmartScan{% endblock %} · DEWEBNET</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
+        .scan-history-table { overflow-x: auto; max-width: 100%; }
+        .scan-history-table table { min-width: 640px; }
+        .scan-history-table .btn { min-height: 44px; margin: .15rem; }
+        @media (max-width: 720px) {
+            .topbar { flex-wrap: wrap; height: auto !important; padding: .75rem 1rem !important; }
+            .topbar .userbox { margin-left: auto; }
+        }
+        button:focus-visible, a:focus-visible, [tabindex]:focus-visible { outline: 3px solid #8cc63f; outline-offset: 3px; }
         :root {
             /* DEWEBNET brand */
             --brand-navy: #11178C;

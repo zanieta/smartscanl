@@ -85,18 +85,15 @@ policy after a successful restore drill.
 
 ## Change settings
 
-### Optional automatic network discovery
+### Manual network discovery
 
-New installations include discovery units but leave the timer disabled. This is
+Discovery runs only when an administrator clicks **Discover devices**. This is
 active TCP host discovery, not passive monitoring or automatic vulnerability
 scanning. Only use networks you are authorized to assess.
 
-After upgrading an existing installation, install the new units explicitly:
+Configure approved ranges on the server:
 
 ```bash
-sudo install -m 644 /opt/vulnsense/deploy/vulnsense-discovery.service /etc/systemd/system/
-sudo install -m 644 /opt/vulnsense/deploy/vulnsense-discovery.timer /etc/systemd/system/
-sudo systemctl daemon-reload
 sudoedit /opt/vulnsense/.env
 ```
 
@@ -107,23 +104,35 @@ Then:
 
 ```bash
 sudo systemctl restart vulnsense
-sudo systemctl enable --now vulnsense-discovery.timer
-sudo systemctl start vulnsense-discovery.service
-sudo journalctl -u vulnsense-discovery.service -n 30 --no-pager
+sudo journalctl -u vulnsense -n 30 --no-pager
 ```
 
-Admins can view `/admin/network`. The timer checks approximately every 15 minutes
-after the preceding run finishes. TCP probes to ports 80/443 can miss filtered
+Admins can open `/admin/network` and click **Discover devices**, then **Refresh results**.
+Refreshing the page never initiates probes. TCP probes to ports 80/443 can miss filtered
 devices; absence is not proof that a device is offline. No root privileges,
 service fingerprinting, LLM calls, or scan-token charges are used. Each range
 has a 90-second timeout; an interrupted or failed run is not a complete inventory.
 PostgreSQL prevents concurrent discovery jobs; the latest 100 snapshots are kept.
-Invalid configuration fails before probes and is reported in the service journal.
+Invalid configuration fails before probes. Device rows include IP, network,
+hostname, MAC and vendor when observed. MAC can use the local neighbor cache;
+routed devices commonly have no visible MAC. Model/firmware are not inferred.
 
-Before application upgrades, stop the discovery timer and service, then restart
-the timer only if it was previously enabled. To disable discovery permanently,
-set `NETWORK_DISCOVERY_ENABLED=0`, stop/disable the timer, and restart the app.
-The existing updater does not install or modify these systemd units automatically.
+The updater disables/stops the old discovery timer and stops its service.
+Do not re-enable it. The weekly CVE sync timer is unaffected. Interrupted queued
+runs can be retried after 10 minutes. To disable the manual button, set
+`NETWORK_DISCOVERY_ENABLED=0` and restart the app.
+
+### Reports and scan deletion
+
+PDF exports exclude uncertain and informational entries, including legacy entries
+explicitly marked uncertain. Dashboard evidence remains unchanged. PDF totals are
+computed from exported entries; no uncertainty appendix or exclusion note is added.
+Version matches remain potential vulnerabilities, not proof of exploitation.
+
+Admins can delete a scan from Reports, PC Scan History or Web Scan History after
+confirmation. Deletion removes the stored report and cached copy; consumed scan
+tokens, token-usage audit records and existing backups are retained. Deletion
+cannot be undone from the UI. No scans are deleted during installation or update.
 
 ### Application settings
 

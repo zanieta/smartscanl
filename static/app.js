@@ -67,5 +67,29 @@ window.VulnSense = (function () {
         return `<span class="threat lv-${lv}" title="${cap(lv)}"><i></i><i></i><i></i><i></i></span>`;
     }
 
-    return { esc, cap, loadAllScans, threatBars, isAccepted, bucketOf, tally, setRiskStatus };
+    function csrfHeaders() {
+        return {'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.content || ''};
+    }
+
+    function bindScanDeletion(container, reload) {
+        container.addEventListener('click', async event => {
+            const button = event.target.closest('[data-delete-scan]');
+            if (!button) return;
+            event.stopPropagation();
+            if (!confirm('Permanently delete this scan and its report? Token usage and existing backups are retained. This cannot be undone.')) return;
+            button.disabled = true;
+            try {
+                const response = await fetch('/api/scans/' + encodeURIComponent(button.dataset.deleteScan),
+                    {method: 'DELETE', headers: csrfHeaders()});
+                if (!response.ok) throw new Error('Delete failed (' + response.status + '). Refresh and try again.');
+                await reload();
+            } catch (error) {
+                alert(error.message || 'Delete failed. Check your connection.');
+                button.disabled = false;
+            }
+        });
+    }
+
+    return { esc, cap, loadAllScans, threatBars, isAccepted, bucketOf, tally, setRiskStatus,
+             csrfHeaders, bindScanDeletion };
 })();

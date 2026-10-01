@@ -1,8 +1,8 @@
-"""Scheduled discovery. Disabled until a server administrator approves ranges."""
+"""Manual discovery. Disabled until a server administrator approves ranges."""
 import logging
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -19,7 +19,33 @@ def now():
     return datetime.now(timezone.utc).isoformat()
 
 
-def run(bind=engine) -> int:
+def enqueue(bind=engine) -> str | None:
+    if os.getenv("NETWORK_DISCOVERY_ENABLED", "0") != "1":
+        raise ValueError("Discovery is disabled. Configure approved ranges on the server first.")
+    networks = approved_networks(os.getenv("NETWORK_DISCOVERY_CIDRS", ""))
+    with bind.connect() as connection:
+        locked = connection.execute(text("SELECT pg_try_advisory_xact_lock(:key)"),
+                                    {"key": LOCK_ID}).scalar_one()
+        if not locked:
+            connection.rollback()
+            return None
+        with Session(bind=connection) as session:
+            cutoff = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+            active = session.query(DiscoveryRun).filter(DiscoveryRun.status.in_(["queued", "running"]))
+            active.filter(DiscoveryRun.started_at < cutoff).update(
+                {"status": "interrupted", "finished_at": now()}, synchronize_session=False)
+            if active.filter(DiscoveryRun.started_at >= cutoff).first():
+                connection.rollback()
+                return None
+            run_id = str(uuid.uuid4())
+            session.add(DiscoveryRun(id=run_id, started_at=now(), status="queued",
+                                     networks=[str(n) for n in networks], hosts=[]))
+            session.flush()
+            connection.commit()
+            return run_id
+
+
+def run(bind=engine, run_id: str | None = None) -> int:
     if os.getenv("NETWORK_DISCOVERY_ENABLED", "0") != "1":
         log.info("Network discovery disabled")
         return 0
@@ -40,9 +66,22 @@ def run(bind=engine) -> int:
                 # A previous process may have been interrupted; never present it as current.
                 session.query(DiscoveryRun).filter_by(status="running").update(
                     {"status": "interrupted", "finished_at": now()})
-                row = DiscoveryRun(id=str(uuid.uuid4()), started_at=now(), status="running",
-                                   networks=[str(n) for n in networks], hosts=[])
-                session.add(row)
+                row = session.get(DiscoveryRun, run_id) if run_id else None
+                if run_id and (row is None or row.status != "queued"):
+                    return 1
+                if row is None:
+                    row = DiscoveryRun(id=str(uuid.uuid4()), started_at=now(), status="running",
+                                       networks=[str(n) for n in networks], hosts=[])
+                    session.add(row)
+                else:
+                    # Do not scan a scope which changed since the admin clicked.
+                    if row.networks != [str(n) for n in networks]:
+                        row.status = "failed"
+                        row.error = "Approved ranges changed. Start a new discovery run."
+                        row.finished_at = now()
+                        session.commit()
+                        return 1
+                    row.status = "running"
                 session.commit()
                 try:
                     hosts = []
@@ -71,5 +110,10 @@ def run(bind=engine) -> int:
 
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Manual approved-network discovery")
+    parser.add_argument("--manual", action="store_true", required=True,
+                        help="Explicitly request one discovery run")
+    parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     raise SystemExit(run())

@@ -231,10 +231,13 @@ install -m 644 "${APP_DIR}/deploy/vulnsense-sync.timer"   /etc/systemd/system/vu
 systemctl daemon-reload
 systemctl enable --now vulnsense.service
 systemctl enable --now vulnsense-sync.timer
-install -m 644 "${APP_DIR}/deploy/vulnsense-discovery.service" /etc/systemd/system/vulnsense-discovery.service
-install -m 644 "${APP_DIR}/deploy/vulnsense-discovery.timer" /etc/systemd/system/vulnsense-discovery.timer
-systemctl daemon-reload
-# Discovery is opt-in: install the units but do not enable the timer.
+# Discovery is requested through the admin UI, never a timer.
+if systemctl cat vulnsense-discovery.timer >/dev/null 2>&1; then
+    systemctl disable --now vulnsense-discovery.timer
+fi
+if systemctl cat vulnsense-discovery.service >/dev/null 2>&1; then
+    systemctl stop vulnsense-discovery.service
+fi
 
 # ---- 10. nginx ----------------------------------------------------------------
 log "Configuring nginx reverse proxy for ${APP_HOST}..."
