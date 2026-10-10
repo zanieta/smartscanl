@@ -4,6 +4,7 @@ import json
 import re
 import subprocess
 import xml.etree.ElementTree as ET
+from scanner.device_inventory import enrich
 
 PRIVATE = tuple(ipaddress.ip_network(cidr) for cidr in
                 ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"))
@@ -70,4 +71,4 @@ def discover(network) -> list[dict]:
                     "mac": mac.get("addr", "")[:32] if mac is not None else neighbors.get(str(ip), ""),
                     "vendor": mac.get("vendor", "")[:160] if mac is not None else "",
                 }
-    return [hosts[ip] for ip in sorted(hosts, key=ipaddress.ip_address)]
+    return enrich([hosts[ip] for ip in sorted(hosts, key=ipaddress.ip_address)])

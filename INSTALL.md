@@ -115,7 +115,14 @@ has a 90-second timeout; an interrupted or failed run is not a complete inventor
 PostgreSQL prevents concurrent discovery jobs; the latest 100 snapshots are kept.
 Invalid configuration fails before probes. Device rows include IP, network,
 hostname, MAC and vendor when observed. MAC can use the local neighbor cache;
-routed devices commonly have no visible MAC. Model/firmware are not inferred.
+routed devices commonly have no visible MAC. Offline Nmap MAC prefixes provide
+interface-vendor hints only; locally administered MACs skip vendor lookup.
+Up to 32 responding hosts per range receive name-service lookups (8 concurrent,
+one-second timeout each) using the server's configured resolver. This may contact
+that resolver. Hostname type hints are low-confidence and may be spoofed.
+The scanner's default-gateway role is medium-confidence, not hardware identity.
+Conflicts remain Unknown; model/firmware are not inferred. No Internet device
+research, service fingerprinting, login or password checks are performed.
 
 The updater disables/stops the old discovery timer and stops its service.
 Do not re-enable it. The weekly CVE sync timer is unaffected. Interrupted queued

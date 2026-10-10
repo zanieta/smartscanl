@@ -3,7 +3,8 @@
 {% block style %}
 .discovery-wrap { overflow-wrap: anywhere; }
 .discovery-table { overflow-x: auto; }
-.discovery-table table { min-width: 660px; }
+.discovery-table table { min-width: 980px; }
+.device-evidence { max-width: 260px; white-space: normal; }
 .discovery-actions { display: flex; flex-wrap: wrap; gap: .75rem; }
 .discovery-run { margin-top: 1rem; }
 .discovery-refresh:focus-visible { outline: 3px solid var(--brand-green); outline-offset: 3px; }
@@ -24,7 +25,7 @@
 <p>Approved ranges: <code>{{ ranges or 'None configured' }}</code></p>
 <p>Manual discovery only. Click Discover devices to check the approved ranges. Refresh results does not scan.</p>
 <p>This uses active TCP discovery probes, not passive monitoring or a vulnerability scan. Firewalls can hide devices; absence does not mean a device is offline. Times below are UTC.</p>
-<p>Device details are observed values only. MAC addresses may come from the scanner's local neighbor cache. Hostname and vendor may be unavailable; model and firmware are not identified by this discovery check.</p>
+<p>Identification uses local gateway/neighbor information, offline MAC-vendor data and up to 32 hostname lookups per range through the server's configured name service. Device types are hints, not authenticated identities. Private MAC addresses, sleeping devices and isolated networks limit identification. No login attempts or password checks are performed.</p>
 {% if not enabled %}<p>Ask your server administrator to configure approved ranges and enable discovery. No network checks run by default.</p>{% endif %}
 </section>
 {% for run in runs %}
@@ -35,9 +36,13 @@
 {% if run.status == 'completed' %}
 <p>{{ run.hosts | length }} responding device(s). Snapshot only—not current live status.</p>
 <div class="discovery-table" tabindex="0" role="region" aria-label="Discovered device details"><table>
-<thead><tr><th scope="col">IP address</th><th scope="col">Hostname</th><th scope="col">MAC address</th><th scope="col">Vendor</th><th scope="col">Network</th><th scope="col">Observed status</th></tr></thead>
-<tbody>{% for host in run.hosts %}<tr><td><strong>{{ host.ip }}</strong></td><td>{{ host.hostname or 'Unknown' }}</td><td>{{ host.mac or 'Unavailable' }}</td><td>{{ host.vendor or 'Unknown' }}</td><td>{{ host.network }}</td><td>Responded</td></tr>
-{% else %}<tr><td colspan="6">No devices responded.</td></tr>{% endfor %}</tbody></table></div>
+<thead><tr><th scope="col">IP / Network</th><th scope="col">Device type / Model</th><th scope="col">Confidence / Evidence</th><th scope="col">Hostname</th><th scope="col">MAC address</th><th scope="col">MAC vendor</th><th scope="col">Observed status</th></tr></thead>
+<tbody>{% for host in run.hosts %}<tr><td><strong>{{ host.ip }}</strong><br><small>{{ host.network }}</small></td>
+<td>{{ host.device_type or 'Unknown' }}<br><small>Model: {{ host.model or 'Unknown' }}</small></td>
+<td class="device-evidence">{{ host.confidence or 'Unknown' }}<details><summary>Identification evidence</summary><ul>{% for evidence in host.identification_evidence or [] %}<li>{{ evidence }}</li>{% else %}<li>No identification evidence recorded. Run discovery again.</li>{% endfor %}</ul></details></td>
+<td>{{ host.hostname or 'Unknown' }}{% if not host.hostname and host.hostname_lookup %}<br><small>{{ host.hostname_lookup }}</small>{% endif %}</td>
+<td>{{ host.mac or 'Unavailable' }}{% if host.mac_locally_administered %}<br><small>Locally administered</small>{% endif %}</td><td>{{ host.vendor or 'Unknown' }}</td><td>Responded</td></tr>
+{% else %}<tr><td colspan="7">No devices responded.</td></tr>{% endfor %}</tbody></table></div>
 {% elif run.status in ['queued', 'running'] %}<p role="status">Check queued or in progress. Refresh this page for results. If interrupted by a restart, a new request can recover it after 10 minutes.</p>{% endif %}
 </section>
 {% else %}<section class="card card-pad discovery-run"><p>No discovery runs recorded yet.</p></section>{% endfor %}
