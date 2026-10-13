@@ -52,6 +52,16 @@ class DiscoveryRun(Base):
     error = Column(String, nullable=True)
 
 
+class DeviceAudit(Base):
+    __tablename__ = 'device_audits'
+    key = Column(String, primary_key=True)
+    target = Column(String, nullable=False)
+    action = Column(String, nullable=False)
+    operator_id = Column(Integer, nullable=False)
+    created_at = Column(String, nullable=False)
+    result = Column(JSON, nullable=False)
+
+
 class SyncLog(Base):
     __tablename__ = "sync_log"
 

@@ -7,6 +7,12 @@
 .device-evidence { max-width: 260px; white-space: normal; }
 .discovery-actions { display: flex; flex-wrap: wrap; gap: .75rem; }
 .discovery-run { margin-top: 1rem; }
+.discovery-wrap section { margin-bottom: 1rem; }
+#device-audit-form input:not([type=checkbox]) { display:block; width:100%; max-width:28rem; margin:.5rem 0; min-height:44px; }
+#device-audit-form details { margin-top:1rem; }
+#device-audit-form label { display:block; margin:.5rem 0; }
+#device-audit-form summary { cursor:pointer; min-height:44px; }
+#device-audit-form :focus-visible { outline:3px solid var(--brand-green); outline-offset:3px; }
 .discovery-refresh:focus-visible { outline: 3px solid var(--brand-green); outline-offset: 3px; }
 @media (max-width: 720px) {
     .topbar { flex-wrap: wrap; height: auto; padding: .75rem 1rem; }
@@ -20,13 +26,47 @@
 <div class="discovery-actions"><button class="btn discovery-refresh" id="discover" {% if not enabled %}disabled{% endif %}>Discover devices</button>
 <a class="btn btn-ghost discovery-refresh" href="/admin/network">Refresh results</a></div></div>
 <p id="discovery-message" role="status" aria-live="polite"></p>
+<section class="card card-pad" aria-label="Device identification and approved login check">
+<h2 class="section">Identify a device</h2>
+<p>Enter an approved device IP. Identification reads explicit model/firmware fields over verified HTTPS (port 443). Unsupported or unavailable fields stay Unknown.</p>
+<form id="device-audit-form">
+<fieldset {% if not audit_enabled or not enabled %}disabled{% endif %} style="border:0;padding:0;min-width:0">
+{% if not audit_enabled %}<p>Device auditing is disabled. See the server setup guide to enable it separately from discovery.</p>{% endif %}
+<label for="audit-target">Device IPv4 address</label>
+<input id="audit-target" required placeholder="Approved device IP" maxlength="15">
+<label for="identity-profile">Identification profile ID (optional)</label>
+<input id="identity-profile" maxlength="64" placeholder="Leave blank for labeled HTML fields">
+<p>A reviewed profile can read a JSON or XML identity endpoint. It never signs in. Profiles must be configured by the server administrator.</p>
+<button class="btn" type="submit">Identify device</button>
+<details><summary>Optional default-login check</summary>
+<p>Requires a server-reviewed HTTPS Basic-auth profile. One check per IP across runs; failed checks consume the limit. No password lists, form logins or SSH. Rejection does not prove a password was changed.</p>
+<label for="audit-profile">Reviewed profile ID</label><input id="audit-profile" maxlength="64">
+<label><input id="audit-consent" type="checkbox"> I administer this device and approve one default-credential check, which may cause account lockout.</label>
+<button class="btn btn-ghost" id="audit-login" type="button">Check default login</button>
+</details>
+</fieldset>
+</form><pre id="audit-result" role="status" aria-live="polite" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre>
+</section>
 <section class="card card-pad" aria-label="Discovery configuration">
 <p>Configuration: <strong>{{ 'Enabled' if enabled else 'Disabled' }}</strong></p>
 <p>Approved ranges: <code>{{ ranges or 'None configured' }}</code></p>
 <p>Manual discovery only. Click Discover devices to check the approved ranges. Refresh results does not scan.</p>
 <p>This uses active TCP discovery probes, not passive monitoring or a vulnerability scan. Firewalls can hide devices; absence does not mean a device is offline. Times below are UTC.</p>
-<p>Identification uses local gateway/neighbor information, offline MAC-vendor data and up to 32 hostname lookups per range through the server's configured name service. Device types are hints, not authenticated identities. Private MAC addresses, sleeping devices and isolated networks limit identification. No login attempts or password checks are performed.</p>
+<p>Discovery uses local gateway/neighbor information, offline MAC-vendor data and up to 32 hostname lookups per range through the server's configured name service. Device types are hints, not authenticated identities. Private MAC addresses, sleeping devices and isolated networks limit identification. Discovery itself never attempts login; the optional approved login check is a separate action.</p>
 {% if not enabled %}<p>Ask your server administrator to configure approved ranges and enable discovery. No network checks run by default.</p>{% endif %}
+</section>
+<section class="card card-pad" aria-label="Recent device audit results">
+<h2 class="section">Recent device audit results</h2>
+<p>Historical observations, not verified hardware identities. IP addresses can be reassigned. A running entry left by an interruption still consumes its attempt limit.</p>
+{% if audits %}<div class="discovery-table" tabindex="0" role="region" aria-label="Dated device identity observations"><table>
+<thead><tr><th scope="col">IP / Observed at (UTC)</th><th scope="col">Manufacturer / Type</th><th scope="col">Model / Firmware</th><th scope="col">Action / Status</th><th scope="col">Source / Evidence</th></tr></thead>
+<tbody>{% for audit in audits %}<tr>
+<td>{{ audit.target }}<br><small>{{ audit.created_at }}</small></td>
+<td>{{ audit.result.manufacturer or 'Unknown' }}<br><small>{{ audit.result.device_type or 'Unknown' }}</small></td>
+<td>{{ audit.result.model or 'Unknown' }}<br><small>Firmware: {{ audit.result.firmware or 'Unknown' }}</small></td>
+<td>{{ audit.action }}<br><small>{{ audit.result.status }}</small></td>
+<td class="device-evidence">{{ audit.result.source or 'Not recorded' }}<details><summary>Audit evidence</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere">{{ audit.result | tojson(indent=2) }}</pre></details></td>
+</tr>{% endfor %}</tbody></table></div>{% else %}<p>No device audits recorded yet.</p>{% endif %}
 </section>
 {% for run in runs %}
 <section class="card card-pad discovery-run" aria-label="Discovery run">
@@ -53,6 +93,30 @@
 <script>
 const button = document.getElementById('discover');
 const message = document.getElementById('discovery-message');
+const auditForm = document.getElementById('device-audit-form');
+async function auditDevice(action) {
+    const result = document.getElementById('audit-result');
+    if (!auditForm.reportValidity()) return;
+    if (action === 'check-default' && !document.getElementById('audit-consent').checked) {
+        result.textContent = 'Approval is required before a login check.'; return;
+    }
+    const controls = auditForm.querySelectorAll('button');
+    controls.forEach(control => control.disabled = true);
+    result.textContent = 'Checking device…';
+    try {
+        const response = await fetch('/api/devices/' + action, {method: 'POST',
+            headers: {...VulnSense.csrfHeaders(), 'Content-Type': 'application/json'},
+            body: JSON.stringify({target: document.getElementById('audit-target').value.trim(),
+                profile_id: document.getElementById('audit-profile').value.trim(),
+                identity_profile_id: document.getElementById('identity-profile').value.trim(),
+                approval: action === 'check-default' ? 'CHECK_DEFAULT_LOGIN' : ''})});
+        const data = await response.json();
+        result.textContent = response.ok ? JSON.stringify(data, null, 2) : (data.detail || 'Check failed.');
+    } catch (_) { result.textContent = 'Connection failed. Do not retry a login check; its attempt may already be recorded.'; }
+    finally { controls.forEach(control => control.disabled = false); document.getElementById('audit-consent').checked = false; }
+}
+auditForm.addEventListener('submit', event => {event.preventDefault(); auditDevice('identify');});
+document.getElementById('audit-login').addEventListener('click', () => auditDevice('check-default'));
 button.addEventListener('click', async () => {
     button.disabled = true;
     message.textContent = 'Requesting discovery…';

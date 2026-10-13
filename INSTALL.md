@@ -276,3 +276,9 @@ The last command should report a non-zero CVE row count and a sync age within
 | Scan fails at the analysis step | `OLLAMA_MODEL` tag absent on the Ollama host — this fails at scan time, not startup | `ollama list`, then `ollama pull gpt-oss:latest` |
 | Logged out after re-running the installer | `.env` was regenerated | Restore the old `SESSION_SECRET`, or accept the new one |
 | `nginx -t` fails | `APP_HOST` unset or wrong | Fix `server_name` in `/etc/nginx/sites-available/vulnsense` |
+# Optional RC8 device audits
+
+Identification and approved default-login checks are separate, disabled-by-default
+admin actions. See `DEVICE-AUDIT.md` in the Linux release (source guide:
+`docs/device-audit-rc8.md`).
+No verified vendor profiles are bundled, and upgrading does not enable login checks.

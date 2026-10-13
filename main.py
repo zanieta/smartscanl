@@ -23,7 +23,7 @@ from reports.pdf_report import build_pdf
 
 from db.session import SessionLocal, init_db
 from db.queries import find_cves, os_to_target
-from db.models import SyncLog, User, DiscoveryRun
+from db.models import SyncLog, User, DiscoveryRun, DeviceAudit
 from db import store
 from sync.nvd_sync import sync_cves
 
@@ -541,7 +541,9 @@ def network_discovery_page(request: Request):
     user = require_admin_page(request)
     with SessionLocal() as db:
         runs = db.query(DiscoveryRun).order_by(DiscoveryRun.started_at.desc()).limit(20).all()
+        audits = db.query(DeviceAudit).order_by(DeviceAudit.created_at.desc()).limit(20).all()
         return _page(request, "network.html", "network", user, runs=runs,
+                     audits=audits, audit_enabled=os.getenv('DEVICE_AUDIT_ENABLED', '0') == '1',
                      enabled=os.getenv("NETWORK_DISCOVERY_ENABLED", "0") == "1",
                      ranges=os.getenv("NETWORK_DISCOVERY_CIDRS", ""))
 
@@ -563,6 +565,68 @@ def start_discovery(request: Request, tasks: BackgroundTasks,
 
 
 # ===================== scans (login + token required) =====================
+
+class DeviceAuditRequest(BaseModel):
+    target: str
+    profile_id: str = ''
+    identity_profile_id: str = ''
+    approval: str = ''
+
+
+@app.post('/api/devices/{action}')
+def audit_device(action: str, payload: DeviceAuditRequest, request: Request,
+                 user: User = Depends(require_admin_api)):
+    _check_csrf(request)
+    if action not in {'identify', 'check-default'}:
+        raise HTTPException(status_code=404, detail='Unknown device action.')
+    if os.getenv('DEVICE_AUDIT_ENABLED', '0') != '1':
+        raise HTTPException(status_code=403, detail='Device auditing is disabled on this server.')
+    from scanner import device_audit
+    from sqlalchemy.exc import IntegrityError
+    profile = None
+    identity_profile = None
+    try:
+        target = device_audit.validate_target(payload.target)
+        if action == 'identify' and payload.identity_profile_id:
+            from scanner.identity_profiles import load_profiles
+            identity_profile = next((p for p in load_profiles() if p.id == payload.identity_profile_id), None)
+            if identity_profile is None:
+                raise HTTPException(status_code=422, detail='No reviewed identification profile selected.')
+        if action == 'check-default':
+            if payload.approval != 'CHECK_DEFAULT_LOGIN':
+                raise HTTPException(status_code=422, detail='Explicit approval is required.')
+            profile = next((p for p in device_audit.profiles() if p.id == payload.profile_id), None)
+            if profile is None:
+                raise HTTPException(status_code=422, detail='No supported reviewed profile selected.')
+    except (ValueError, OSError):
+        raise HTTPException(status_code=422, detail='Invalid target or device-profile configuration.')
+    # Unique persistent key reserves budget before any network activity; survives
+    # process crashes, duplicate clicks and multiple workers. Failed checks consume it.
+    key = f'{action}:{target}'
+    if action == 'identify':
+        key += ':' + datetime.now(timezone.utc).strftime('%Y%m%d%H%M')
+    with SessionLocal() as db:
+        row = DeviceAudit(key=key, target=target, action=action, operator_id=user.id,
+                          created_at=_now(), result={'status': 'running'})
+        db.add(row)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(status_code=409, detail='Attempt limit reached for this device. No request sent.')
+        try:
+            if action == 'identify':
+                result = device_audit.identify(target, identity_profile) if identity_profile else device_audit.identify(target)
+            else:
+                result = device_audit.check_default(target, profile)
+        except Exception:
+            # Never expose request objects, credentials or device-controlled errors.
+            result = {'status': 'inconclusive', 'reason': 'Connection, certificate or response validation failed. No retry performed.'}
+        row.result = result
+        db.commit()
+        logging.getLogger(__name__).warning('Device audit action=%s target=%s admin=%s status=%s',
+                                           action, target, user.id, result['status'])
+        return {'target': target, 'created_at': row.created_at, **result}
 
 @app.post("/scan")
 def create_scan(request: ScanRequest, user: User = Depends(require_user_api)):
