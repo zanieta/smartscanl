@@ -43,13 +43,13 @@
 {% endblock %}
 
 {% block body %}
-<a href="/reports" class="back-link">&larr; Back to Reports</a>
+<a href="{{ '/admin/network' if network_report else '/reports' }}" class="back-link">&larr; Back to {{ 'Network discovery' if network_report else 'Reports' }}</a>
 <div class="page-head">
     <div>
         <h1 class="page-title">Host Security Report</h1>
         <div class="page-sub mono">ID: {{ report.scan_id }}</div>
     </div>
-    <a href="/report/{{ report.scan_id }}/pdf" target="_blank" class="btn">&darr; Download PDF</a>
+    <a href="{{ pdf_url if network_report else '/report/' ~ report.scan_id ~ '/pdf' }}" target="_blank" class="btn">&darr; Download PDF</a>
 </div>
 
 <div class="summary-box">
@@ -76,7 +76,7 @@
             {% if accepted %}<span class="badge sev-accepted"><span class="d"></span>Accepted</span>{% else %}<span class="badge sev-{{ sev }}"><span class="d"></span>{{ finding.severity | capitalize }}</span>{% endif %}
             <span class="finding-id">{{ finding.cve_id }}</span>
             <span class="finding-cvss">CVSS {{ finding.cvss }}</span>
-            <button class="accept-btn {% if accepted %}undo{% endif %}" data-cve="{{ finding.cve_id }}" data-accept="{{ 0 if accepted else 1 }}">{{ 'Undo' if accepted else 'Accept Risk' }}</button>
+            {% if not network_report %}<button class="accept-btn {% if accepted %}undo{% endif %}" data-cve="{{ finding.cve_id }}" data-accept="{{ 0 if accepted else 1 }}">{{ 'Undo' if accepted else 'Accept Risk' }}</button>{% endif %}
         </div>
         <div class="finding-title">{{ finding.description }}</div>
         <div class="finding-body">

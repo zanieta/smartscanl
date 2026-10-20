@@ -4,131 +4,196 @@
 .discovery-wrap { overflow-wrap: anywhere; }
 .discovery-table { overflow-x: auto; }
 .discovery-table table { min-width: 980px; }
-.device-evidence { max-width: 260px; white-space: normal; }
 .discovery-actions { display: flex; flex-wrap: wrap; gap: .75rem; }
-.discovery-run { margin-top: 1rem; }
+.subnet-choice { display:flex; align-items:center; gap:.6rem; min-height:44px; }
+.network-scope input[type=text] { width:100%; max-width:38rem; min-height:44px; }
+.network-scope label { display:block; margin:.6rem 0; }
+.network-scope .subnet-choice { display:flex; }
+.scan-options { margin:1rem 0; }
+.scan-options summary { cursor:pointer; min-height:44px; display:flex; align-items:center; }
+.network-scope input:focus-visible { outline:3px solid var(--brand-green); }
 .discovery-wrap section { margin-bottom: 1rem; }
-#device-audit-form input:not([type=checkbox]) { display:block; width:100%; max-width:28rem; margin:.5rem 0; min-height:44px; }
-#device-audit-form details { margin-top:1rem; }
-#device-audit-form label { display:block; margin:.5rem 0; }
-#device-audit-form summary { cursor:pointer; min-height:44px; }
-#device-audit-form :focus-visible { outline:3px solid var(--brand-green); outline-offset:3px; }
 .discovery-refresh:focus-visible { outline: 3px solid var(--brand-green); outline-offset: 3px; }
+.login-check label { display:block; margin:.75rem 0 .35rem; }
+.login-check fieldset { border:0; padding:0; min-width:0; }
+.login-check .subnet-choice { display:flex; margin:1rem 0; }
+.login-check input:focus-visible, .login-check button:focus-visible { outline:3px solid var(--brand-green); outline-offset:2px; }
+.login-check .login-history { margin-top:1.5rem; }
+.result-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr)); gap:1rem; margin:1rem 0; }
+.device-result { border:1px solid #dfe4ec; border-radius:12px; padding:1.1rem; min-width:0; background:#fff; }
+.device-result header { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:.6rem; margin-bottom:1rem; }
+.device-result h4 { margin:0; font-size:1.05rem; font-family:inherit; }
+.device-result p { margin:.65rem 0; }
+.result-meta { color:#536078; font-size:.84rem; }
+.result-badge { display:inline-flex; align-items:center; padding:.25rem .65rem; border-radius:6px; font-size:.75rem; font-weight:600; background:#edf1f6; color:#38465c; }
+.result-badge[data-state="default_credentials_accepted"] { background:#fff0ee; color:#a6271d; }
+.result-badge[data-state="inconclusive_lockout"], .result-badge[data-state="inconclusive"] { background:#fff6df; color:#805900; }
+.result-badge[data-state="completed"], .result-badge[data-state="assessed"] { background:#edf6ed; color:#315d32; }
+.result-badge[data-state="tested_credentials_rejected"] { background:#edf2ff; color:#354c8a; }
+.result-fields { display:grid; grid-template-columns:1fr 1fr; gap:.85rem; margin:.8rem 0; }
+.result-fields div { min-width:0; }
+.result-fields dt { font-size:.72rem; color:#536078; text-transform:uppercase; letter-spacing:.04em; margin-bottom:.25rem; }
+.result-fields dd { margin:0; font-size:.9rem; }
+.result-advice { border-left:3px solid #a9bcce; background:#f6f8fb; padding:.7rem .8rem; font-size:.85rem; line-height:1.6; }
+.result-run { border-top:1px solid #e4e8ef; padding:.8rem 0; }
+.result-run > summary { cursor:pointer; padding:.35rem 0; min-height:44px; }
+.result-run > summary .result-badge { margin:0 .5rem; }
+.discovery-wrap summary:focus-visible { outline:3px solid var(--brand-green); outline-offset:3px; }
+.login-attempts { list-style:none; padding:0; margin:.75rem 0; }
+.login-attempts li { border-top:1px solid #e4e8ef; padding:.85rem 0; }
+.attempt-number { font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:#536078; }
+.login-attempts .result-fields { font-size:.85rem; }
+.result-empty { background:#f6f8fb; border-radius:8px; padding:1rem; color:#536078; }
+.login-source { display:flex; flex-wrap:wrap; gap:1.2rem; padding:1rem; margin:1rem 0; background:#f6f8fb; border:1px solid #e4e8ef; border-radius:8px; }
+.login-source div { min-width:0; }
+.login-source dt { color:#536078; font-size:.75rem; margin-bottom:.3rem; }
+.login-source dd { margin:0; font-weight:600; font-size:.9rem; }
+.login-action { display:flex; flex-wrap:wrap; align-items:center; gap:1rem; margin:1rem 0; }
+.login-action p { margin:0; max-width:38rem; font-size:.84rem; color:#536078; }
+.login-limits { margin:1rem 0; color:#536078; font-size:.85rem; }
+.login-limits summary { min-height:44px; cursor:pointer; }
 @media (max-width: 720px) {
     .topbar { flex-wrap: wrap; height: auto; padding: .75rem 1rem; }
     .topbar .userbox { margin-left: auto; }
 }
 {% endblock %}
 {% block body %}
+{% macro attempt_details(attempts) %}
+<ol class="login-attempts">
+{% for attempt in attempts %}<li>
+<div class="attempt-number">Attempt {{ loop.index }}</div>
+<dl class="result-fields"><div><dt>Profile</dt><dd>{{ attempt.profile_id or 'Not recorded' }}</dd></div>
+<div><dt>Username</dt><dd>{{ attempt.username or 'Not recorded in this result' }}</dd></div>
+<div><dt>Password</dt><dd>•••••••• <small>(not stored)</small></dd></div>
+<div><dt>Credential sent</dt><dd>{% if attempt.credential_sent is sameas true %}Yes{% elif attempt.credential_sent is sameas false %}No{% else %}Unconfirmed{% endif %}</dd></div></dl>
+<span class="result-badge" data-state="{{ attempt.status }}">{{ attempt.status | replace('_', ' ') }}</span>
+</li>{% endfor %}</ol>
+{% endmacro %}
 <div class="discovery-wrap">
 <div class="page-head"><div><h1 class="page-title">Network discovery</h1>
-<p class="page-sub">Responding devices on administrator-approved networks.</p></div>
-<div class="discovery-actions"><button class="btn discovery-refresh" id="discover" {% if not enabled %}disabled{% endif %}>Discover devices</button>
+<p class="page-sub">Scan approved subnets, identify devices and review vulnerabilities.</p></div>
+<div class="discovery-actions">
 <a class="btn btn-ghost discovery-refresh" href="/admin/network">Refresh results</a></div></div>
-<p id="discovery-message" role="status" aria-live="polite"></p>
-<section class="card card-pad" aria-label="Device identification and approved login check">
-<h2 class="section">Identify a device</h2>
-<p>Enter an approved device IP. Identification reads explicit model/firmware fields over verified HTTPS (port 443). Unsupported or unavailable fields stay Unknown.</p>
-<form id="device-audit-form">
-<fieldset {% if not audit_enabled or not enabled %}disabled{% endif %} style="border:0;padding:0;min-width:0">
-{% if not audit_enabled %}<p>Device auditing is disabled. See the server setup guide to enable it separately from discovery.</p>{% endif %}
-<label for="audit-target">Device IPv4 address</label>
-<input id="audit-target" required placeholder="Approved device IP" maxlength="15">
-<label for="identity-profile">Identification profile ID (optional)</label>
-<input id="identity-profile" maxlength="64" placeholder="Leave blank for labeled HTML fields">
-<p>A reviewed profile can read a JSON or XML identity endpoint. It never signs in. Profiles must be configured by the server administrator.</p>
-<button class="btn" type="submit">Identify device</button>
-<details><summary>Optional default-login check</summary>
-<p>Requires a server-reviewed HTTPS Basic-auth profile. One check per IP across runs; failed checks consume the limit. No password lists, form logins or SSH. Rejection does not prove a password was changed.</p>
-<label for="audit-profile">Reviewed profile ID</label><input id="audit-profile" maxlength="64">
-<label><input id="audit-consent" type="checkbox"> I administer this device and approve one default-credential check, which may cause account lockout.</label>
-<button class="btn btn-ghost" id="audit-login" type="button">Check default login</button>
-</details>
+<section class="card card-pad network-scope" aria-label="Local subnet scan">
+<h2 class="section">Scan local subnets</h2>
+<p>Select one or more administrator-approved subnets. These are scanned from this server—not from the browser's device.</p>
+{% if scope_error %}<p role="alert">{{ scope_error }}</p>{% endif %}
+<fieldset><legend>Approved subnets</legend>
+{% for subnet in subnet_choices %}<label class="subnet-choice"><input type="checkbox" name="scan-subnet" value="{{ subnet }}"> {{ subnet }}</label>
+{% else %}<p>No approved subnets configured. Configure NETWORK_DISCOVERY_CIDRS on the server first.</p>{% endfor %}
 </fieldset>
-</form><pre id="audit-result" role="status" aria-live="polite" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre>
+<label for="narrow-subnets">Or enter smaller subnets within approved ranges (comma-separated)</label>
+<input id="narrow-subnets" type="text" maxlength="100" placeholder="Optional: narrower CIDRs replace the selection above">
+<details class="scan-options"><summary>Optional identification settings</summary>
+<label for="network-profile">Reviewed identification profile ID (optional)</label>
+<input id="network-profile" type="text" maxlength="64" placeholder="Blank uses explicit HTTPS HTML fields">
+</details>
+<p><strong>Flow:</strong> Discover → identify devices → check vulnerabilities → recommendations.</p>
+<p>Discovery checks selected ranges. The full scan additionally probes the top 100 TCP ports on up to 8 responding devices per run. Remaining devices are marked skipped; use a smaller subnet to assess them. Failed identification does not prevent service checks. No exploit or default-login attempts are included.</p>
+<label class="subnet-choice"><input id="network-consent" type="checkbox"> I administer the selected networks and approve active service/version probes.</label>
+<button class="btn" id="scan-network" {% if not subnet_choices %}disabled{% endif %}>Scan selected subnets</button>
+<p id="network-message" role="status" aria-live="polite"></p>
 </section>
-<section class="card card-pad" aria-label="Discovery configuration">
-<p>Configuration: <strong>{{ 'Enabled' if enabled else 'Disabled' }}</strong></p>
-<p>Approved ranges: <code>{{ ranges or 'None configured' }}</code></p>
-<p>Manual discovery only. Click Discover devices to check the approved ranges. Refresh results does not scan.</p>
-<p>This uses active TCP discovery probes, not passive monitoring or a vulnerability scan. Firewalls can hide devices; absence does not mean a device is offline. Times below are UTC.</p>
-<p>Discovery uses local gateway/neighbor information, offline MAC-vendor data and up to 32 hostname lookups per range through the server's configured name service. Device types are hints, not authenticated identities. Private MAC addresses, sleeping devices and isolated networks limit identification. Discovery itself never attempts login; the optional approved login check is a separate action.</p>
-{% if not enabled %}<p>Ask your server administrator to configure approved ranges and enable discovery. No network checks run by default.</p>{% endif %}
+<section class="card card-pad" aria-label="Local network scan history">
+<h2 class="section">Local network scans</h2>
+<p>Refresh results to view progress. Reports include recommendations for version-matched CVEs, not proof of exploitation. No findings does not mean a device is secure.</p>
+{% for scan in network_runs %}<details class="result-run" {% if loop.first %}open{% endif %}>
+<summary><time datetime="{{ scan.started_at }}">{{ scan.started_at[:19] | replace('T', ' ') }} UTC</time><span class="result-badge" data-state="{{ scan.status }}">{{ scan.status }}</span><span class="result-meta">{{ scan.results | length }} devices · {{ scan.stage }}</span></summary>
+<p>Selected scope: {{ scan.networks | join(', ') }}</p>
+{% if scan.error %}<p role="alert">{{ scan.error }}</p>{% endif %}
+{% if scan.results %}<div class="result-grid" role="region" aria-label="Local scan device results">
+{% for device in scan.results %}<article class="device-result"><header><h4>{{ device.ip }}</h4><span class="result-badge" data-state="{{ device.state }}">{{ device.state | default('Unknown') | replace('_', ' ') }}</span></header>
+<p class="result-meta">{{ device.hostname or 'Unknown hostname' }} · {{ device.device_type or 'Unknown type' }}</p>
+<dl class="result-fields"><div><dt>Model</dt><dd>{{ device.identity.model if device.identity and device.identity.model else 'Unknown' }}</dd></div><div><dt>Firmware</dt><dd>{{ device.identity.firmware if device.identity and device.identity.firmware else 'Unknown' }}</dd></div></dl>
+{% if device.identity %}<details><summary>Identity evidence</summary><pre style="white-space:pre-wrap">{{ device.identity | tojson(indent=2) }}</pre></details>{% endif %}
+{% if device.reason %}<p class="result-meta">{{ device.reason }}</p>{% endif %}
+{% if device.report %}<p><strong>{{ device.report.finding_count }}</strong> version-matched finding(s)</p><p class="result-advice">{{ device.report.coverage }}</p><a class="btn btn-ghost" href="/admin/network-scans/{{ scan.id }}/{{ device.ip }}/report">Report &amp; recommendations</a>{% else %}<p class="result-empty">No completed assessment</p>{% endif %}</article>{% endfor %}</div>
+{% elif scan.status in ['queued', 'running'] %}<p>Waiting for discovery results.</p>{% else %}<p>No responding devices recorded. This does not establish that the subnet is empty.</p>{% endif %}
+</details>{% else %}<p>No local network scans yet.</p>{% endfor %}
 </section>
-<section class="card card-pad" aria-label="Recent device audit results">
-<h2 class="section">Recent device audit results</h2>
-<p>Historical observations, not verified hardware identities. IP addresses can be reassigned. A running entry left by an interruption still consumes its attempt limit.</p>
-{% if audits %}<div class="discovery-table" tabindex="0" role="region" aria-label="Dated device identity observations"><table>
-<thead><tr><th scope="col">IP / Observed at (UTC)</th><th scope="col">Manufacturer / Type</th><th scope="col">Model / Firmware</th><th scope="col">Action / Status</th><th scope="col">Source / Evidence</th></tr></thead>
-<tbody>{% for audit in audits %}<tr>
-<td>{{ audit.target }}<br><small>{{ audit.created_at }}</small></td>
-<td>{{ audit.result.manufacturer or 'Unknown' }}<br><small>{{ audit.result.device_type or 'Unknown' }}</small></td>
-<td>{{ audit.result.model or 'Unknown' }}<br><small>Firmware: {{ audit.result.firmware or 'Unknown' }}</small></td>
-<td>{{ audit.action }}<br><small>{{ audit.result.status }}</small></td>
-<td class="device-evidence">{{ audit.result.source or 'Not recorded' }}<details><summary>Audit evidence</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere">{{ audit.result | tojson(indent=2) }}</pre></details></td>
-</tr>{% endfor %}</tbody></table></div>{% else %}<p>No device audits recorded yet.</p>{% endif %}
+
+<section class="card card-pad login-check" aria-label="Default-login checks">
+<h2 class="section">Default-login checks</h2>
+<p>Check all devices from the latest completed local subnet scan. Reviewed HTTPS Basic-auth profiles are matched automatically to each device's freshly observed model. No device or profile selection is needed.</p>
+{% if not audit_enabled %}<p role="status">Disabled on this server. Enable DEVICE_AUDIT_ENABLED in the server settings to use device audits.</p>{% endif %}
+{% if login_profile_error %}<p role="alert">{{ login_profile_error }}</p>{% elif not login_profiles %}<p>No reviewed login profiles configured. Devices will be reported unsupported without login attempts. Configure DEVICE_AUDIT_PROFILE_FILE and server-side credential variables to support matching devices. No default passwords are bundled.</p>{% endif %}
+{% if login_source %}<dl class="login-source"><div><dt>Devices in scope</dt><dd>{{ login_source.results | length }} discovered devices</dd></div><div><dt>Approved networks</dt><dd>{{ login_source.networks | join(', ') }}</dd></div><div><dt>Source scan · UTC</dt><dd>{{ login_source.started_at[:19] | replace('T', ' ') }}</dd></div></dl>{% else %}<p class="result-empty">No completed local subnet scan. Run one first.</p>{% endif %}
+<form id="default-login-form">
+<fieldset {% if not audit_enabled or login_profile_error or not login_source %}disabled{% endif %}>
+<input id="login-scan-id" type="hidden" value="{{ login_source.id if login_source else '' }}">
+<div class="login-action"><button class="btn" id="check-default-login" type="submit" aria-describedby="login-action-note">Check discovered devices</button>
+<p id="login-action-note">Starts checks on the devices above, with up to three reviewed credentials per device. Even one attempt may cause account lockout.</p></div>
+<details class="login-limits"><summary>Check limits and supported devices</summary>
+<p>All discovered device types are included, even those skipped by the vulnerability assessment. Run a fresh subnet scan if addresses may have changed. Unsupported devices appear without credential attempts. No additional devices or networks are scanned.</p>
+<p>Maximum three distinct configured credentials per device/IP, not three retries of the same password. Stop on success, lockout, or inconclusive responses. Previous checks and interrupted reservations are never automatically retried. A rejected login does not prove the password was changed.</p></details>
+</fieldset></form>
+<div id="login-result" role="status" aria-live="polite"></div>
+<div class="login-history"><h3 class="section">Batch results</h3>
+{% for batch in login_batches %}<details class="result-run" {% if loop.first %}open{% endif %}><summary><time datetime="{{ batch.created_at }}">{{ batch.created_at[:19] | replace('T', ' ') }} UTC</time><span class="result-badge" data-state="{{ batch.result.status }}">{{ batch.result.status }}</span><span class="result-meta">{{ batch.result.results | length }}/{{ batch.result.targets | length }} devices processed</span></summary>
+{% if batch.result.reason %}<p>{{ batch.result.reason }}</p>{% endif %}
+<div class="result-grid">{% for item in batch.result.results %}<article class="device-result"><header><h4>{{ item.target }}</h4><span class="result-badge" data-state="{{ item.status }}">{{ item.label or item.status | replace('_', ' ') }}</span></header><p class="result-meta">Attempt slots used: {{ item.attempts | default([]) | length }}/3</p>{{ attempt_details(item.attempts | default([])) }}{% if item.reason %}<p class="result-meta">{{ item.reason }}</p>{% endif %}{% if item.recommendation %}<p class="result-advice">{{ item.recommendation }}</p>{% endif %}</article>{% endfor %}</div>
+</details>{% else %}<p class="result-empty">No batch checks yet. Press Check discovered devices to start.</p>{% endfor %}</div>
+<div class="login-history"><h3 class="section">Recent login checks</h3>
+{% for audit in login_history %}{% set message = login_messages.get(audit.result.status, login_messages.inconclusive) %}
+<details class="result-run"><summary><strong>{{ audit.target }}</strong><span class="result-badge" data-state="{{ audit.result.status }}">{{ message[0] }}</span><span class="result-meta">{{ audit.created_at[:19] | replace('T', ' ') }} UTC</span></summary>
+{% if audit.result.attempts %}{{ attempt_details(audit.result.attempts) }}{% else %}{{ attempt_details([audit.result]) }}{% endif %}
+{% if audit.result.reason %}<p>{{ audit.result.reason }}</p>{% endif %}<p><strong>Recommendation:</strong> {{ message[1] }}</p></details>
+{% else %}<p>No default-login checks recorded.</p>{% endfor %}</div>
 </section>
-{% for run in runs %}
-<section class="card card-pad discovery-run" aria-label="Discovery run">
-<h2 class="section">{{ run.status | capitalize }} — {{ run.started_at }}</h2>
-<p>Ranges: {{ run.networks | join(', ') }}</p>
-{% if run.error %}<p role="alert">{{ run.error }}</p>{% endif %}
-{% if run.status == 'completed' %}
-<p>{{ run.hosts | length }} responding device(s). Snapshot only—not current live status.</p>
-<div class="discovery-table" tabindex="0" role="region" aria-label="Discovered device details"><table>
-<thead><tr><th scope="col">IP / Network</th><th scope="col">Device type / Model</th><th scope="col">Confidence / Evidence</th><th scope="col">Hostname</th><th scope="col">MAC address</th><th scope="col">MAC vendor</th><th scope="col">Observed status</th></tr></thead>
-<tbody>{% for host in run.hosts %}<tr><td><strong>{{ host.ip }}</strong><br><small>{{ host.network }}</small></td>
-<td>{{ host.device_type or 'Unknown' }}<br><small>Model: {{ host.model or 'Unknown' }}</small></td>
-<td class="device-evidence">{{ host.confidence or 'Unknown' }}<details><summary>Identification evidence</summary><ul>{% for evidence in host.identification_evidence or [] %}<li>{{ evidence }}</li>{% else %}<li>No identification evidence recorded. Run discovery again.</li>{% endfor %}</ul></details></td>
-<td>{{ host.hostname or 'Unknown' }}{% if not host.hostname and host.hostname_lookup %}<br><small>{{ host.hostname_lookup }}</small>{% endif %}</td>
-<td>{{ host.mac or 'Unavailable' }}{% if host.mac_locally_administered %}<br><small>Locally administered</small>{% endif %}</td><td>{{ host.vendor or 'Unknown' }}</td><td>Responded</td></tr>
-{% else %}<tr><td colspan="7">No devices responded.</td></tr>{% endfor %}</tbody></table></div>
-{% elif run.status in ['queued', 'running'] %}<p role="status">Check queued or in progress. Refresh this page for results. If interrupted by a restart, a new request can recover it after 10 minutes.</p>{% endif %}
-</section>
-{% else %}<section class="card card-pad discovery-run"><p>No discovery runs recorded yet.</p></section>{% endfor %}
 </div>
 {% endblock %}
 {% block scripts %}
 <script src="/static/app.js"></script>
 <script>
-const button = document.getElementById('discover');
-const message = document.getElementById('discovery-message');
-const auditForm = document.getElementById('device-audit-form');
-async function auditDevice(action) {
-    const result = document.getElementById('audit-result');
-    if (!auditForm.reportValidity()) return;
-    if (action === 'check-default' && !document.getElementById('audit-consent').checked) {
-        result.textContent = 'Approval is required before a login check.'; return;
-    }
-    const controls = auditForm.querySelectorAll('button');
-    controls.forEach(control => control.disabled = true);
-    result.textContent = 'Checking device…';
-    try {
-        const response = await fetch('/api/devices/' + action, {method: 'POST',
-            headers: {...VulnSense.csrfHeaders(), 'Content-Type': 'application/json'},
-            body: JSON.stringify({target: document.getElementById('audit-target').value.trim(),
-                profile_id: document.getElementById('audit-profile').value.trim(),
-                identity_profile_id: document.getElementById('identity-profile').value.trim(),
-                approval: action === 'check-default' ? 'CHECK_DEFAULT_LOGIN' : ''})});
-        const data = await response.json();
-        result.textContent = response.ok ? JSON.stringify(data, null, 2) : (data.detail || 'Check failed.');
-    } catch (_) { result.textContent = 'Connection failed. Do not retry a login check; its attempt may already be recorded.'; }
-    finally { controls.forEach(control => control.disabled = false); document.getElementById('audit-consent').checked = false; }
-}
-auditForm.addEventListener('submit', event => {event.preventDefault(); auditDevice('identify');});
-document.getElementById('audit-login').addEventListener('click', () => auditDevice('check-default'));
-button.addEventListener('click', async () => {
+document.getElementById('default-login-form').addEventListener('submit', async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (!form.reportValidity()) return;
+    const button = document.getElementById('check-default-login');
+    const output = document.getElementById('login-result');
+    if (button.disabled || button.matches(':disabled')) return;
     button.disabled = true;
-    message.textContent = 'Requesting discovery…';
+    output.textContent = 'Queuing checks for all discovered devices…';
     try {
-        const response = await fetch('/api/discovery', {method: 'POST', headers: VulnSense.csrfHeaders()});
+        const response = await fetch('/api/network-login-checks', {method:'POST',
+            headers:{...VulnSense.csrfHeaders(), 'Content-Type':'application/json'},
+            body:JSON.stringify({scan_id:document.getElementById('login-scan-id').value, approval:'CHECK_DISCOVERED_LOGINS'})});
         const data = await response.json();
-        if (!response.ok) throw new Error(data.detail || 'Discovery could not be started.');
-        message.textContent = 'Discovery started. Use Refresh results to see progress. A run can take several minutes.';
-    } catch (error) {
-        message.textContent = error.message || 'Connection failed. Refresh results before retrying.';
-        button.disabled = false;
+        if (response.ok) {
+            output.textContent = 'Batch queued. Refresh results to view each device and its outcome. Do not submit again.';
+        } else {
+            output.textContent = typeof data.detail === 'string' ? data.detail : 'Check could not be submitted.';
+        }
+        if (!response.ok && response.status < 500 && response.status !== 409) button.disabled = false;
+    } catch (_) {
+        output.textContent = 'Connection failed; the attempt may already be reserved. Refresh results before taking further action. No retry performed.';
     }
+});
+function selectedSubnets() {
+    const narrowed = document.getElementById('narrow-subnets').value.trim();
+    return narrowed ? narrowed.split(',').map(value => value.trim()).filter(Boolean)
+        : Array.from(document.querySelectorAll('input[name="scan-subnet"]:checked'), input => input.value);
+}
+document.getElementById('scan-network').addEventListener('click', async () => {
+    const status = document.getElementById('network-message');
+    const start = document.getElementById('scan-network');
+    const networks = selectedSubnets();
+    if (!networks.length) { status.textContent = 'Select at least one approved subnet.'; return; }
+    if (!document.getElementById('network-consent').checked) {
+        status.textContent = 'Approval for active service probes is required.'; return;
+    }
+    start.disabled = true;
+    status.textContent = 'Requesting local network scan…';
+    try {
+        const response = await fetch('/api/network-scans', {method:'POST',
+            headers:{...VulnSense.csrfHeaders(), 'Content-Type':'application/json'},
+            body:JSON.stringify({networks, approval:'SCAN_APPROVED_SUBNETS',
+                identity_profile_id:document.getElementById('network-profile').value.trim()})});
+        const data = await response.json();
+        if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Invalid scan request.');
+        status.textContent = 'Scan queued. Use Refresh results to follow discovery, identification and assessment.';
+    } catch (error) { status.textContent = error.message || 'Request failed; refresh before retrying.'; start.disabled = false; }
+    finally { document.getElementById('network-consent').checked = false; }
 });
 </script>
 {% endblock %}

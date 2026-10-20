@@ -11,6 +11,22 @@ from pydantic import BaseModel, ConfigDict, Field
 from scanner.discovery import approved_networks
 
 
+LOGIN_RESULTS = {
+    'default_credentials_accepted': ('Default credentials accepted',
+        'Replace the factory password with a unique strong password, restrict management access, and review device access logs.'),
+    'tested_credentials_rejected': ('Tested credentials rejected',
+        'This does not prove the password was changed. Verify the device account configuration through an authorized management session.'),
+    'unsupported': ('Unsupported check',
+        'Configure a reviewed profile and its credential environment variables. Do not guess passwords or retry with lists.'),
+    'inconclusive_lockout': ('Stopped: possible lockout',
+        'Stop further attempts. Review the device lockout policy and account state with its administrator.'),
+    'inconclusive': ('Inconclusive',
+        'Verify the profile, certificate and device identity manually. No vulnerability is confirmed by this result.'),
+    'running': ('Reserved / in progress',
+        'The attempt is already reserved. Refresh results; do not repeat it if the process was interrupted.'),
+}
+
+
 class LoginProfile(BaseModel):
     model_config = ConfigDict(extra='forbid')
     id: str = Field(pattern=r'^[a-z0-9-]{1,64}$')
@@ -107,24 +123,24 @@ def identify(target: str, profile=None) -> dict:
 
 def check_default(target: str, profile: LoginProfile) -> dict:
     if not profile.reviewed:
-        return {'status': 'unsupported', 'reason': 'Profile has not been reviewed.'}
+        return {'status': 'unsupported', 'credential_sent': False, 'reason': 'Profile has not been reviewed.'}
     identity = identify(target)
     if identity.get('model') != profile.model:
-        return {'status': 'inconclusive', 'reason': 'Observed model does not match the reviewed profile.'}
+        return {'status': 'inconclusive', 'credential_sent': False, 'reason': 'Observed model does not match the reviewed profile.'}
     code, body, challenge = read_page(target, profile.proof_path)
     if code in (423, 429) or re.search(r'locked|lockout|too many|rate.limit', body, re.I):
-        return {'status': 'inconclusive_lockout', 'reason': 'Possible lockout or rate limit; no credential sent.'}
+        return {'status': 'inconclusive_lockout', 'credential_sent': False, 'reason': 'Possible lockout or rate limit; no credential sent.'}
     if code != 401 or not re.match(r'^Basic\s', challenge, re.I) or profile.proof_marker in body:
-        return {'status': 'inconclusive', 'reason': 'Expected unauthenticated baseline was not established.'}
+        return {'status': 'inconclusive', 'credential_sent': False, 'reason': 'Expected unauthenticated baseline was not established.'}
     username, password = os.getenv(profile.username_env), os.getenv(profile.password_env)
     if not username or not password:
-        return {'status': 'unsupported', 'reason': 'Reviewed default credential is not configured.'}
+        return {'status': 'unsupported', 'credential_sent': False, 'reason': 'Reviewed default credential is not configured.'}
     # Exactly one credential-bearing request. No retry, other passwords or schemes.
     code, body, _ = read_page(target, profile.proof_path, auth=(username, password))
     if code in (423, 429) or re.search(r'locked|lockout|too many|rate.limit', body, re.I):
-        return {'status': 'inconclusive_lockout', 'reason': 'Device reported a lockout or rate limit; stopped.'}
+        return {'status': 'inconclusive_lockout', 'username': username, 'credential_sent': True, 'reason': 'Device reported a lockout or rate limit; stopped.'}
     if code == 200 and profile.proof_marker in body:
-        return {'status': 'default_credentials_accepted'}
+        return {'status': 'default_credentials_accepted', 'username': username, 'credential_sent': True}
     if code == 401:
-        return {'status': 'tested_credentials_rejected', 'reason': 'This does not prove the password was changed.'}
-    return {'status': 'inconclusive', 'reason': 'No unambiguous authenticated proof.'}
+        return {'status': 'tested_credentials_rejected', 'username': username, 'credential_sent': True, 'reason': 'This does not prove the password was changed.'}
+    return {'status': 'inconclusive', 'username': username, 'credential_sent': True, 'reason': 'No unambiguous authenticated proof.'}

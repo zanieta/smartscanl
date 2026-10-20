@@ -72,3 +72,17 @@ def discover(network) -> list[dict]:
                     "vendor": mac.get("vendor", "")[:160] if mac is not None else "",
                 }
     return enrich([hosts[ip] for ip in sorted(hosts, key=ipaddress.ip_address)])
+
+
+def selected_networks(values: list[str] | None = None) -> list:
+    """Selection may narrow approved scope, never expand it."""
+    import os
+    if os.getenv('NETWORK_DISCOVERY_ENABLED', '0') != '1':
+        raise ValueError('Discovery is disabled. Configure approved ranges first.')
+    allowed = approved_networks(os.getenv('NETWORK_DISCOVERY_CIDRS', ''))
+    if values is None:
+        return allowed
+    chosen = approved_networks(','.join(values))
+    if any(not any(n.subnet_of(a) for a in allowed) for n in chosen):
+        raise ValueError('Selected subnets must be within administrator-approved ranges.')
+    return chosen

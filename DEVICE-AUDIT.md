@@ -1,5 +1,86 @@
 # RC8 patch: controlled device audits
 
+Current RC9 batch behavior is documented in [device-login-rc9.md](device-login-rc9.md).
+The selector-based RC9 UI description below is historical and superseded by that
+batch workflow; the profile format and HTTPS validation requirements still apply.
+
+## RC9 UI addition: Default-login checks
+
+The network page retains the subnet scan controls and scan output, and adds a
+separate Default-login checks area. It lists devices from the latest 20 subnet
+scan records, filtered against the current approved scope, alongside reviewed
+login profile IDs/models only. Credentials and environment-variable values never
+enter the page. Historical addresses may be reassigned; operators must confirm
+the selected device before authorizing a check. The existing checker re-reads
+the model before any credential-bearing request.
+
+No login check runs on page load, refresh or subnet scanning. Each submission
+requires administrator authentication, CSRF validation and explicit approval.
+The persistent one-attempt-per-IP limit remains enforced by PostgreSQL. Used
+targets are disabled in the selector, including interrupted checks. The most
+recent 20 login results appear with recommendations. A rejected credential is
+not proof of a changed password. Unsupported/inconclusive results are not findings.
+
+Configure `DEVICE_AUDIT_ENABLED=1`, approved network scope, and
+`DEVICE_AUDIT_PROFILE_FILE` with the reviewed profiles and server-side credential
+environment variables described below. Missing profiles disable the form. Invalid
+configuration shows a sanitized message without preventing subnet scanning.
+This UI adds no vendor adapters or bundled passwords: HTTPS Basic-auth profiles
+remain the only supported login mechanism. No new database schema is required
+beyond the audit/workflow tables introduced earlier. RC9 has not been published
+by adding this section; release packaging is a separate step.
+
+## Local subnet workflow (October 14)
+
+The subnet workflow retains Scan local subnets and Local network scans. Legacy
+standalone identification controls and discovery output remain removed; RC9 adds
+the separate login area described above. Existing records and protected backend
+endpoints remain intact.
+Device identification runs inside the subnet workflow; its optional profile
+setting is collapsed by default.
+
+The Network discovery page now offers approved subnet checkboxes and an optional
+comma-separated narrower CIDR input. Narrower CIDRs replace the checkbox selection.
+Neither input can expand `NETWORK_DISCOVERY_CIDRS`; only server-approved RFC1918
+IPv4 scope is accepted (at most four nonoverlapping /24-or-smaller subnets).
+The scanner runs from the installed server, not the administrator's browser.
+
+`Discover devices` performs discovery only on the selection. `Scan selected
+subnets` requires explicit approval for active service probes and runs discovery,
+device identification, service/CVE assessment and recommendations in sequence.
+No scheduled trigger, exploit scripts or credential attempts are added. Existing
+DEVICE_AUDIT_ENABLED controls optional HTTPS model/firmware extraction; service
+identification still runs when HTTPS identity extraction is disabled or unavailable.
+
+The initial bounds are eight responding devices per run, top 100 TCP ports,
+light service/version detection, a 60-second process timeout per device, and a
+15-minute budget checked between devices. Discovery can take 90 seconds per
+subnet. A current bounded operation may finish after the overall budget expires.
+Skipped devices are explicitly listed; select a smaller subnet for another batch.
+Jobs share the discovery PostgreSQL advisory lock. Duplicate work is rejected;
+queued/running workflow records older than 30 minutes are marked interrupted when
+another workflow is requested. Process restarts do not resume probes automatically.
+
+Only explicit versioned service CPEs are matched (maximum 20 product identities,
+up to 50 CVE candidates per identity). Part, vendor, product and version must
+match local database criteria. Uncertain, contextual, legacy-metadata and excluded
+matches are not reported as vulnerabilities. Firmware labels alone are NOT mapped
+to CVEs. No model-to-CPE guessing or AI inference is performed.
+
+Reports reuse the normal host report/PDF format, with deterministic vendor-oriented
+recommendations. They are stored in the additive `network_scan_runs` table and
+available to administrators from the network page, independently of PC scan
+history. Per-device identity, source evidence, stage, completion status and coverage
+are retained. Risk-acceptance controls are not offered on these immutable reports.
+Empty databases, unsupported CPEs, timeouts and skipped devices are shown as
+unassessed/partial, never as secure. Monitor database size and back up this history;
+automatic retention/deletion is not implemented for network workflow reports.
+
+Installation/update startup creates the new table through `init_db`; no existing
+tables or environment settings are removed. Use the backed-up updater. Test the
+flow on a small authorized subnet first. Unit and browser fixtures are not a
+replacement for real-device acceptance testing.
+
 This patch adds separate admin actions to Network discovery. Discovery remains
 manual-only and never attempts login. No photos, AI guesses or online model lookup
 are needed. No vendor login profiles are shipped: real device support must be

@@ -20,7 +20,7 @@ def os_to_target(os_string: str) -> tuple:
     return ("unknown", "unknown")
 
 def find_cves(db: Session, vendor: str, product: str, limit: int = 50,
-              version: str | None = None) -> list:
+              version: str | None = None, part: str | None = None) -> list:
     """Filter versions before limiting distinct CVEs; retain uncertain candidates."""
     vendor = vendor.lower()
     product = product.lower()
@@ -30,7 +30,10 @@ def find_cves(db: Session, vendor: str, product: str, limit: int = 50,
     results = db.query(CVE, CPEMatch).\
         join(CPEMatch, CVE.cve_id == CPEMatch.cve_id).\
         filter(CPEMatch.vendor == vendor, CPEMatch.product == product).\
-        order_by(CVE.cvss_score.desc().nullslast(), CVE.cve_id).yield_per(500)
+        order_by(CVE.cvss_score.desc().nullslast(), CVE.cve_id)
+    if part is not None:
+        results = results.filter(CPEMatch.part == part)
+    results = results.yield_per(500)
         
     # The CVE -> CPEMatch join repeats a CVE once per affected product; dedupe by id.
     candidates = {}

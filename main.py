@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response, RedirectResp
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
 from scanner.nmap_scanner import run_scan
@@ -23,7 +23,7 @@ from reports.pdf_report import build_pdf
 
 from db.session import SessionLocal, init_db
 from db.queries import find_cves, os_to_target
-from db.models import SyncLog, User, DiscoveryRun, DeviceAudit
+from db.models import SyncLog, User, DiscoveryRun, DeviceAudit, NetworkScanRun
 from db import store
 from sync.nvd_sync import sync_cves
 
@@ -539,22 +539,95 @@ async def admin_reset_2fa(request: Request, user_id: int):
 @app.get("/admin/network", response_class=HTMLResponse)
 def network_discovery_page(request: Request):
     user = require_admin_page(request)
+    from scanner.discovery import selected_networks
+    try:
+        subnet_choices = [str(n) for n in selected_networks()]
+        scope_error = ''
+    except ValueError as exc:
+        subnet_choices, scope_error = [], str(exc)
     with SessionLocal() as db:
         runs = db.query(DiscoveryRun).order_by(DiscoveryRun.started_at.desc()).limit(20).all()
         audits = db.query(DeviceAudit).order_by(DeviceAudit.created_at.desc()).limit(20).all()
+        network_runs = db.query(NetworkScanRun).order_by(NetworkScanRun.started_at.desc()).limit(20).all()
+        from scanner import device_audit
+        login_profiles, login_profile_error = [], ''
+        try:
+            login_profiles = [{'id': p.id, 'model': p.model} for p in device_audit.profiles()]
+        except (ValueError, OSError):
+            login_profile_error = 'Login profile configuration is invalid. Ask the server administrator to review it.'
+        login_history = db.query(DeviceAudit).filter_by(action='check-default').order_by(DeviceAudit.created_at.desc()).limit(20).all()
+        from scripts.check_network_logins import latest_scan
+        login_source = latest_scan(db)
+        login_batches = db.query(DeviceAudit).filter_by(action='login-batch').order_by(DeviceAudit.created_at.desc()).limit(20).all()
         return _page(request, "network.html", "network", user, runs=runs,
+                     login_source=login_source, login_batches=login_batches,
+                     login_profiles=login_profiles, login_profile_error=login_profile_error,
+                     login_history=login_history,
+                     login_messages=device_audit.LOGIN_RESULTS,
+                     subnet_choices=subnet_choices, scope_error=scope_error,
+                     network_runs=network_runs,
                      audits=audits, audit_enabled=os.getenv('DEVICE_AUDIT_ENABLED', '0') == '1',
                      enabled=os.getenv("NETWORK_DISCOVERY_ENABLED", "0") == "1",
                      ranges=os.getenv("NETWORK_DISCOVERY_CIDRS", ""))
 
 
+class SubnetSelection(BaseModel):
+    networks: list[str] = Field(min_length=1, max_length=4)
+
+
+class NetworkScanRequest(SubnetSelection):
+    approval: str
+    identity_profile_id: str = ''
+
+
+@app.post('/api/network-scans', status_code=202)
+def start_network_scan(payload: NetworkScanRequest, request: Request, tasks: BackgroundTasks,
+                       user: User = Depends(require_admin_api)):
+    _check_csrf(request)
+    if payload.approval != 'SCAN_APPROVED_SUBNETS':
+        raise HTTPException(status_code=422, detail='Approval for active service probes is required.')
+    from scripts import scan_network
+    try:
+        run_id = scan_network.enqueue(payload.networks, user.id, payload.identity_profile_id)
+    except (ValueError, OSError):
+        raise HTTPException(status_code=422, detail='Invalid subnet selection or reviewed identity profile.')
+    if run_id is None:
+        raise HTTPException(status_code=409, detail='A network operation is already queued or running.')
+    tasks.add_task(scan_network.run, run_id)
+    logging.getLogger(__name__).info('Network workflow requested run=%s admin=%s', run_id, user.id)
+    return {'run_id': run_id}
+
+
+def network_device_report(run_id, target):
+    with SessionLocal() as db:
+        row = db.get(NetworkScanRun, run_id)
+        report = next((r.get('report') for r in row.results if r.get('ip') == target), None) if row else None
+        if not report:
+            raise HTTPException(status_code=404, detail='Device report not found.')
+        return report
+
+
+@app.get('/admin/network-scans/{run_id}/{target}/report', response_class=HTMLResponse)
+def network_report_page(request: Request, run_id: str, target: str):
+    user = require_admin_page(request)
+    return _page(request, 'report.html', 'network', user, report=network_device_report(run_id, target),
+                 network_report=True, pdf_url=f'/admin/network-scans/{run_id}/{target}/pdf')
+
+
+@app.get('/admin/network-scans/{run_id}/{target}/pdf')
+def network_report_pdf(request: Request, run_id: str, target: str):
+    require_admin_page(request)
+    return Response(content=build_pdf(network_device_report(run_id, target), scan_type='host'), media_type='application/pdf')
+
+
 @app.post("/api/discovery", status_code=202)
 def start_discovery(request: Request, tasks: BackgroundTasks,
+                    payload: SubnetSelection | None = None,
                     user: User = Depends(require_admin_api)):
     _check_csrf(request)
     from scripts import discover_network
     try:
-        run_id = discover_network.enqueue()
+        run_id = discover_network.enqueue(networks=payload.networks) if payload else discover_network.enqueue()
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     if run_id is None:
@@ -565,6 +638,28 @@ def start_discovery(request: Request, tasks: BackgroundTasks,
 
 
 # ===================== scans (login + token required) =====================
+
+class LoginBatchRequest(BaseModel):
+    scan_id: str = Field(min_length=1, max_length=100)
+    approval: str
+
+
+@app.post('/api/network-login-checks', status_code=202)
+def start_login_batch(payload: LoginBatchRequest, request: Request, tasks: BackgroundTasks,
+                      user: User = Depends(require_admin_api)):
+    _check_csrf(request)
+    if payload.approval != 'CHECK_DISCOVERED_LOGINS':
+        raise HTTPException(status_code=422, detail='Explicit approval for the discovered devices is required.')
+    from scripts import check_network_logins
+    try:
+        key = check_network_logins.enqueue(payload.scan_id, user.id)
+    except (ValueError, OSError):
+        raise HTTPException(status_code=422, detail='Review enabled auditing, approved scope, profiles and latest scan. Refresh before trying again.')
+    if key is None:
+        raise HTTPException(status_code=409, detail='A login batch is already queued or running. Interrupted batches require administrator review.')
+    tasks.add_task(check_network_logins.run, key)
+    return {'run_id': key}
+
 
 class DeviceAuditRequest(BaseModel):
     target: str
@@ -622,6 +717,9 @@ def audit_device(action: str, payload: DeviceAuditRequest, request: Request,
         except Exception:
             # Never expose request objects, credentials or device-controlled errors.
             result = {'status': 'inconclusive', 'reason': 'Connection, certificate or response validation failed. No retry performed.'}
+        if action == 'check-default':
+            label, recommendation = device_audit.LOGIN_RESULTS.get(result['status'], device_audit.LOGIN_RESULTS['inconclusive'])
+            result = {**result, 'profile_id': profile.id, 'label': label, 'recommendation': recommendation}
         row.result = result
         db.commit()
         logging.getLogger(__name__).warning('Device audit action=%s target=%s admin=%s status=%s',

@@ -62,6 +62,20 @@ class DeviceAudit(Base):
     result = Column(JSON, nullable=False)
 
 
+class NetworkScanRun(Base):
+    __tablename__ = 'network_scan_runs'
+    id = Column(String, primary_key=True)
+    started_at = Column(String, nullable=False, index=True)
+    finished_at = Column(String)
+    status = Column(String, nullable=False)
+    stage = Column(String, nullable=False)
+    networks = Column(JSON, nullable=False)
+    profile_id = Column(String, nullable=False, default='')
+    operator_id = Column(Integer, nullable=False)
+    results = Column(JSON, nullable=False)
+    error = Column(String)
+
+
 class SyncLog(Base):
     __tablename__ = "sync_log"
 

@@ -7,9 +7,9 @@ from datetime import datetime, timezone, timedelta
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from db.models import DiscoveryRun
+from db.models import DiscoveryRun, NetworkScanRun
 from db.session import engine
-from scanner.discovery import approved_networks, discover
+from scanner.discovery import approved_networks, discover, selected_networks
 
 log = logging.getLogger(__name__)
 LOCK_ID = 847291035
@@ -19,10 +19,10 @@ def now():
     return datetime.now(timezone.utc).isoformat()
 
 
-def enqueue(bind=engine) -> str | None:
+def enqueue(bind=engine, networks=None) -> str | None:
     if os.getenv("NETWORK_DISCOVERY_ENABLED", "0") != "1":
         raise ValueError("Discovery is disabled. Configure approved ranges on the server first.")
-    networks = approved_networks(os.getenv("NETWORK_DISCOVERY_CIDRS", ""))
+    networks = selected_networks(networks)
     with bind.connect() as connection:
         locked = connection.execute(text("SELECT pg_try_advisory_xact_lock(:key)"),
                                     {"key": LOCK_ID}).scalar_one()
@@ -30,6 +30,11 @@ def enqueue(bind=engine) -> str | None:
             connection.rollback()
             return None
         with Session(bind=connection) as session:
+            local_cutoff = (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat()
+            if session.query(NetworkScanRun).filter(NetworkScanRun.status.in_(['queued', 'running']),
+                    NetworkScanRun.started_at >= local_cutoff).first():
+                connection.rollback()
+                return None
             cutoff = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
             active = session.query(DiscoveryRun).filter(DiscoveryRun.status.in_(["queued", "running"]))
             active.filter(DiscoveryRun.started_at < cutoff).update(
@@ -75,7 +80,9 @@ def run(bind=engine, run_id: str | None = None) -> int:
                     session.add(row)
                 else:
                     # Do not scan a scope which changed since the admin clicked.
-                    if row.networks != [str(n) for n in networks]:
+                    try:
+                        networks = selected_networks(row.networks)
+                    except ValueError:
                         row.status = "failed"
                         row.error = "Approved ranges changed. Start a new discovery run."
                         row.finished_at = now()
