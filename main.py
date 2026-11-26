@@ -72,7 +72,11 @@ app.add_middleware(
     https_only=os.getenv("COOKIE_SECURE") == "1",
 )
 app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
+def _csrf_context(request: Request) -> dict:
+    return {"csrf_token": request.session.setdefault("csrf_token", secrets.token_urlsafe(32))}
+
+
+templates = Jinja2Templates(directory="templates", context_processors=[_csrf_context])
 
 
 @app.exception_handler(RedirectException)
@@ -106,16 +110,15 @@ class RiskStatusRequest(BaseModel):
 
 
 def _page(request: Request, name: str, active: str, user, **extra):
-    request.session.setdefault("csrf_token", secrets.token_urlsafe(32))
-    ctx = {"active": active, "user": user, "csrf_token": request.session["csrf_token"]}
+    ctx = {"active": active, "user": user}
     ctx.update(extra)
     return templates.TemplateResponse(request=request, name=name, context=ctx)
 
 
-def _check_csrf(request: Request) -> None:
+def _check_csrf(request: Request, form_token: str = "") -> None:
     expected = request.session.get("csrf_token", "")
-    supplied = request.headers.get("x-csrf-token", "")
-    if not expected or not secrets.compare_digest(expected, supplied):
+    supplied = form_token or request.headers.get("x-csrf-token", "")
+    if not expected or not supplied.isascii() or not secrets.compare_digest(expected, supplied):
         raise HTTPException(status_code=403, detail="Reload the page and try again.")
 
 
@@ -185,7 +188,10 @@ async def login_page(request: Request, error: str = "", next: str = "/"):
 
 @app.post("/login")
 async def login_submit(request: Request, username: str = Form(...),
-                       password: str = Form(...), next: str = Form("/")):
+                       password: str = Form(...), next: str = Form("/"), csrf_token: str = Form("")):
+    _check_csrf(request, csrf_token)
+    if next not in {"/", "/pc", "/web", "/reports", "/risks", "/clients", "/tokens", "/admin/users", "/admin/network"}:
+        next = "/"
     db = SessionLocal()
     try:
         user = store.get_user_by_username(db, username.strip())
@@ -217,8 +223,9 @@ async def login_submit(request: Request, username: str = Form(...),
     return RedirectResponse(destination, status_code=303)
 
 
-@app.get("/logout")
-async def logout(request: Request):
+@app.post("/logout")
+async def logout(request: Request, csrf_token: str = Form("")):
+    _check_csrf(request, csrf_token)
     auth.logout_session(request)
     return RedirectResponse("/login", status_code=303)
 
@@ -256,8 +263,9 @@ async def totp_enroll_page(request: Request, error: str = ""):
 
 
 @app.post("/2fa/enroll")
-async def totp_enroll_submit(request: Request, code: str = Form(...)):
+async def totp_enroll_submit(request: Request, code: str = Form(...), csrf_token: str = Form("")):
     user = require_pending(request)
+    _check_csrf(request, csrf_token)
     secret = request.session.get("totp_candidate")
     if not secret:
         return RedirectResponse("/2fa/enroll", status_code=303)
@@ -294,8 +302,9 @@ async def totp_verify_page(request: Request, error: str = ""):
 
 
 @app.post("/2fa/verify")
-async def totp_verify_submit(request: Request, code: str = Form(...)):
+async def totp_verify_submit(request: Request, code: str = Form(...), csrf_token: str = Form("")):
     user = require_pending(request)
+    _check_csrf(request, csrf_token)
     db = SessionLocal()
     try:
         row = db.query(User).filter(User.id == user.id).first()
@@ -389,8 +398,9 @@ async def clients_page(request: Request, error: str = "", ok: str = ""):
 
 @app.post("/clients")
 async def create_client(request: Request, name: str = Form(...),
-                        contact: str = Form(""), notes: str = Form("")):
+                        contact: str = Form(""), notes: str = Form(""), csrf_token: str = Form("")):
     require_admin_page(request)
+    _check_csrf(request, csrf_token)
     name = name.strip()
     if not name:
         return RedirectResponse("/clients?error=Client+name+is+required", status_code=303)
@@ -438,8 +448,9 @@ async def tokens_page(request: Request, error: str = "", ok: str = ""):
 
 @app.post("/tokens")
 async def generate_token(request: Request, client_id: int = Form(...),
-                         scan_limit: int = Form(...)):
+                         scan_limit: int = Form(...), csrf_token: str = Form("")):
     user = require_admin_page(request)
+    _check_csrf(request, csrf_token)
     if not client_id:
         return RedirectResponse("/tokens?error=Choose+a+client", status_code=303)
     if scan_limit < 1:
@@ -449,15 +460,15 @@ async def generate_token(request: Request, client_id: int = Form(...),
         if not store.get_client(db, client_id):
             return RedirectResponse("/tokens?error=Unknown+client", status_code=303)
         tok = store.generate_token(db, client_id, scan_limit, user.id)
-        value = tok.token
     finally:
         db.close()
-    return RedirectResponse(f"/tokens?ok=Generated+{value}", status_code=303)
+    return RedirectResponse("/tokens?ok=Token+generated", status_code=303)
 
 
 @app.post("/tokens/{token_id}/revoke")
-async def revoke_token(request: Request, token_id: int):
+async def revoke_token(request: Request, token_id: int, csrf_token: str = Form("")):
     require_admin_page(request)
+    _check_csrf(request, csrf_token)
     db = SessionLocal()
     try:
         store.revoke_token(db, token_id)
@@ -487,8 +498,9 @@ async def admin_users_page(request: Request, error: str = "", ok: str = ""):
 @app.post("/admin/users")
 async def admin_create_user(request: Request, username: str = Form(...),
                             password: str = Form(...), full_name: str = Form(""),
-                            role: str = Form("analyst")):
+                            role: str = Form("analyst"), csrf_token: str = Form("")):
     require_admin_page(request)
+    _check_csrf(request, csrf_token)
     username = username.strip()
     role = role if role in ("admin", "analyst") else "analyst"
     if not username or len(password) < MIN_PASSWORD_LEN:
@@ -509,9 +521,10 @@ async def admin_create_user(request: Request, username: str = Form(...),
 
 
 @app.post("/admin/users/{user_id}/reset-2fa")
-async def admin_reset_2fa(request: Request, user_id: int):
+async def admin_reset_2fa(request: Request, user_id: int, csrf_token: str = Form("")):
     """Clear a user's TOTP secret so they re-enroll on next login (lost device)."""
     admin = require_admin_page(request)
+    _check_csrf(request, csrf_token)
     db = SessionLocal()
     try:
         target = db.query(User).filter(User.id == user_id).first()
@@ -727,7 +740,8 @@ def audit_device(action: str, payload: DeviceAuditRequest, request: Request,
         return {'target': target, 'created_at': row.created_at, **result}
 
 @app.post("/scan")
-def create_scan(request: ScanRequest, user: User = Depends(require_user_api)):
+def create_scan(request: ScanRequest, http_request: Request, user: User = Depends(require_user_api)):
+    _check_csrf(http_request)
     # Sync def on purpose: the scan is fully blocking (nmap subprocess, DB, and the
     # LLM HTTP call). FastAPI runs sync path operations in a threadpool, so a long
     # scan does not freeze the worker's event loop — the gunicorn liveness heartbeat
@@ -761,7 +775,8 @@ def create_scan(request: ScanRequest, user: User = Depends(require_user_api)):
 
 
 @app.post("/scan-web")
-def create_web_scan(request: WebScanRequest, user: User = Depends(require_user_api)):
+def create_web_scan(request: WebScanRequest, http_request: Request, user: User = Depends(require_user_api)):
+    _check_csrf(http_request)
     # Sync def on purpose — same reason as /scan: blocking scan work runs in the
     # threadpool so it doesn't stall the event loop / worker heartbeat.
     _validate_token(request.token)
@@ -801,7 +816,8 @@ def create_web_scan(request: WebScanRequest, user: User = Depends(require_user_a
 # ===================== sync (login required) =====================
 
 @app.post("/sync")
-async def trigger_sync(background_tasks: BackgroundTasks, user: User = Depends(require_user_api)):
+async def trigger_sync(request: Request, background_tasks: BackgroundTasks, user: User = Depends(require_admin_api)):
+    _check_csrf(request)
     def run_sync():
         db = SessionLocal()
         try:
@@ -863,8 +879,9 @@ async def get_sync_status(user: User = Depends(require_user_api)):
 # ===================== risk status / scan APIs (login required) =====================
 
 @app.post("/api/risk-status")
-async def set_risk_status(req: RiskStatusRequest, user: User = Depends(require_user_api)):
+async def set_risk_status(req: RiskStatusRequest, request: Request, user: User = Depends(require_user_api)):
     """Mark a finding as accepted (acknowledged / won't-fix / false positive) or reopen it."""
+    _check_csrf(request)
     db_map = reports_db if req.scan_type == "pc" else web_reports_db
     report = db_map.get(req.scan_id)
     if report is None:

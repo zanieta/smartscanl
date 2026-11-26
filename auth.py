@@ -77,20 +77,19 @@ def verify_password(password: str, stored: str) -> bool:
 
 def login_session(request: Request, user: User) -> None:
     """Fully authenticate. Clears any half-finished 2FA state."""
-    clear_pending(request)
+    request.session.clear()
     request.session["uid"] = user.id
 
 
 def logout_session(request: Request) -> None:
-    request.session.pop("uid", None)
-    clear_pending(request)
+    request.session.clear()
 
 
 # ===================== pending (password ok, 2FA outstanding) =====================
 
 def begin_pending(request: Request, user: User) -> None:
     """Password verified; hold the user here until a TOTP code lands."""
-    request.session.pop("uid", None)
+    request.session.clear()
     request.session["pending_uid"] = user.id
 
 

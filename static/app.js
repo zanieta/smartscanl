@@ -54,7 +54,7 @@ window.VulnSense = (function () {
     // Persist an accept/undo decision to the server.
     async function setRiskStatus(scanType, scanId, cveId, accepted) {
         const res = await fetch('/api/risk-status', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            method: 'POST', headers: { 'Content-Type': 'application/json', ...csrfHeaders() },
             body: JSON.stringify({ scan_type: scanType === 'PC' ? 'pc' : 'web', scan_id: scanId, cve_id: cveId, accepted })
         });
         return res.ok;

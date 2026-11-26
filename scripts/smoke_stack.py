@@ -14,11 +14,19 @@ deliberate post-deploy verification.
 """
 
 import argparse
+import re
 import sys
 import time
 
 import httpx
 from dotenv import dotenv_values
+
+
+def form_token(page) -> str:
+    match = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
+    if page.status_code != 200 or not match:
+        raise RuntimeError("Expected a session-bound form token.")
+    return match.group(1)
 
 
 def _wait_for_app(url: str, attempts: int) -> int:
@@ -68,7 +76,8 @@ def main() -> int:
             # the redirect *target*, not just the 303 status, matters -- a
             # rejected login never produces a 303 to /2fa/enroll, so this
             # still fails on bad credentials.
-            admin_login = client.post("/login", data={"username": username, "password": password})
+            admin_login = client.post("/login", data={"username": username, "password": password,
+                                                     "csrf_token": form_token(login_page)})
             logo = client.get("/static/logo.png")
 
         # The break-glass account is 2FA-exempt by design, precisely so
@@ -81,7 +90,8 @@ def main() -> int:
         with httpx.Client(base_url=args.base_url, verify=not args.insecure,
                           follow_redirects=False, timeout=10) as bg_client:
             breakglass_login = bg_client.post(
-                "/login", data={"username": breakglass_username, "password": breakglass_password})
+                "/login", data={"username": breakglass_username, "password": breakglass_password,
+                                "csrf_token": form_token(bg_client.get("/login"))})
             home = bg_client.get("/")
     except (httpx.HTTPError, RuntimeError) as exc:
         print(f"Smoke test failed: {exc}", file=sys.stderr)

@@ -422,7 +422,7 @@
                         <span class="role-chip {{ 'role-admin' if user.role == 'admin' else 'role-analyst' }}">{{ user.role }}</span>
                     </div>
                     <div class="avatar">{{ (user.full_name or user.username)[0]|upper }}</div>
-                    <a href="/logout" class="logout-link">Sign out</a>
+                    <form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="logout-link">Sign out</button></form>
                 </div>
                 {% endif %}
             </div>

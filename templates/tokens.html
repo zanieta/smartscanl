@@ -48,6 +48,7 @@
         <h2 class="section">Generate Token</h2>
         {% if clients %}
         <form method="post" action="/tokens">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div class="form-group">
                 <label for="client_id">Client</label>
                 <select id="client_id" name="client_id" required>
@@ -98,6 +99,7 @@
                     <td style="text-align:right">
                         {% if t.active %}
                         <form method="post" action="/tokens/{{ t.id }}/revoke" style="display:inline">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <button class="icon-btn" type="submit" onclick="return confirm('Revoke this token? It can no longer be used for scans.')">Revoke</button>
                         </form>
                         {% endif %}

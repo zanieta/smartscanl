@@ -106,7 +106,7 @@ document.getElementById('scan-form').addEventListener('submit', async (e) => {
     btn.disabled = true; btn.textContent = 'Scanning…'; loader.style.display = 'flex';
     try {
         const res = await fetch('/scan-web', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            method: 'POST', headers: { 'Content-Type': 'application/json', ...VulnSense.csrfHeaders() },
             body: JSON.stringify({ url: urlInput.value, token })
         });
         if (res.ok) { const d = await res.json(); location.href = `/web-report/${d.scan_id}/html`; }

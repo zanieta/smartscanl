@@ -33,6 +33,7 @@
     <section class="card card-pad">
         <h2 class="section">New Client</h2>
         <form method="post" action="/clients">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div class="form-group">
                 <label for="name">Client name</label>
                 <input type="text" id="name" name="name" placeholder="e.g. Acme Corp" required>

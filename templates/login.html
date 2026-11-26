@@ -99,6 +99,7 @@
             <div class="eyebrow">Security Operations Console</div>
             {% if error %}<div class="alert">{{ error }}</div>{% endif %}
             <form method="post" action="/login">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <input type="hidden" name="next" value="{{ next }}">
                 <div class="input-field">
                     <i class="material-icons prefix">person_outline</i>

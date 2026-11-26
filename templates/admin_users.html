@@ -36,6 +36,7 @@
     <section class="card card-pad">
         <h2 class="section">New Account</h2>
         <form method="post" action="/admin/users">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div class="form-group">
                 <label for="full_name">Full name <span style="color:var(--text-faint);font-weight:500">(optional)</span></label>
                 <input type="text" id="full_name" name="full_name" placeholder="Jane Dela Cruz">
@@ -81,6 +82,7 @@
                             <span style="color:var(--accepted);font-weight:700">Enrolled</span>
                             <form method="post" action="/admin/users/{{ u.id }}/reset-2fa" style="display:inline"
                                   onsubmit="return confirm('Reset two-factor for {{ u.username }}? They will re-enroll at next sign-in.')">
+                                      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                 <button type="submit" class="btn-flat"
                                         style="padding:0 0.4rem;height:auto;line-height:1.4;font-size:0.72rem;font-weight:700;color:var(--brand-navy,#11178C);text-transform:none">
                                     Reset
