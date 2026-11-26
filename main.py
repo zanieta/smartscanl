@@ -1,4 +1,6 @@
 import uuid
+import json
+from typing import Literal
 import os
 import logging
 import secrets
@@ -23,7 +25,7 @@ from reports.pdf_report import build_pdf
 
 from db.session import SessionLocal, init_db
 from db.queries import find_cves, os_to_target
-from db.models import SyncLog, User, DiscoveryRun, DeviceAudit, NetworkScanRun
+from db.models import SyncLog, User, DiscoveryRun, DeviceAudit, NetworkScanRun, ClientMembership, MembershipEvent
 from db import store
 from sync.nvd_sync import sync_cves
 
@@ -50,14 +52,6 @@ async def lifespan(app: FastAPI):
     auth.seed_admin()
     auth.seed_breakglass()
 
-    # Rehydrate the in-memory report caches from persisted scans so history and
-    # report/PDF rendering survive restarts.
-    db = SessionLocal()
-    try:
-        reports_db.update(store.load_payloads(db, "pc"))
-        web_reports_db.update(store.load_payloads(db, "web"))
-    finally:
-        db.close()
 
     yield
 
@@ -79,14 +73,19 @@ def _csrf_context(request: Request) -> dict:
 templates = Jinja2Templates(directory="templates", context_processors=[_csrf_context])
 
 
+@app.middleware("http")
+async def private_console_responses(request: Request, call_next):
+    response = await call_next(request)
+    if not request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
 @app.exception_handler(RedirectException)
 async def _redirect_handler(request: Request, exc: RedirectException):
     return RedirectResponse(exc.location, status_code=303)
 
 
-# In-memory caches, kept in sync with the persisted `scans` table.
-reports_db = {}
-web_reports_db = {}
 
 
 class ScanRequest(BaseModel):
@@ -103,7 +102,7 @@ class WebScanRequest(BaseModel):
 
 
 class RiskStatusRequest(BaseModel):
-    scan_type: str   # "pc" or "web"
+    scan_type: Literal["pc", "web"]
     scan_id: str
     cve_id: str
     accepted: bool
@@ -137,11 +136,17 @@ def _recount(report: dict) -> None:
     report["high_count"] = high
 
 
-def _validate_token(token_value: str):
+def _require_operator(user):
+    if user.role not in {"admin", "analyst"}:
+        raise HTTPException(403, "Operator access required.")
+
+
+def _validate_token(token_value: str, user: User):
     """Fail fast before running a scan. Returns (client_id, client_name)."""
     db = SessionLocal()
     try:
-        tok = store.get_token_by_value(db, token_value)
+        _require_operator(user)
+        tok = store.token_query(db, user).filter_by(token=token_value.strip()).first()
         if tok is None:
             raise HTTPException(status_code=403, detail="Invalid scan token.")
         if not tok.is_spendable:
@@ -162,12 +167,12 @@ def _finalize_scan(report: dict, scan_type: str, token_value: str, user: User) -
     target = report.get("host") or report.get("url")
     db = SessionLocal()
     try:
-        tok = store.get_token_by_value(db, token_value)
-        if tok is not None:
-            report["client_id"] = tok.client_id
-            report["client_name"] = tok.client.name if tok.client else None
-            store.consume_token(db, tok, user.id if user else None,
-                                target, report["scan_id"], scan_type)
+        tok = store.token_query(db, user).filter_by(token=token_value.strip()).with_for_update().first()
+        if tok is None or not tok.is_spendable:
+            raise HTTPException(403, "Scan authorization is no longer valid.")
+        report["client_id"] = tok.client_id
+        report["client_name"] = tok.client.name if tok.client else None
+        store.consume_token(db, tok, user.id, target, report["scan_id"], scan_type)
         store.persist_scan(db, report, scan_type,
                            report.get("client_id"), user.id if user else None, target)
     finally:
@@ -340,9 +345,10 @@ async def get_dashboard(request: Request):
 @app.get("/pc", response_class=HTMLResponse)
 async def get_pc_scanner(request: Request):
     user = require_user(request)
+    _require_operator(user)
     db = SessionLocal()
     try:
-        tokens = [t for t in store.list_tokens(db) if t.is_spendable]
+        tokens = [t for t in store.token_query(db, user) if t.is_spendable]
         token_opts = [{"value": t.token, "client": t.client.name if t.client else "—",
                        "remaining": t.remaining} for t in tokens]
     finally:
@@ -353,9 +359,10 @@ async def get_pc_scanner(request: Request):
 @app.get("/web", response_class=HTMLResponse)
 async def get_web_dashboard(request: Request):
     user = require_user(request)
+    _require_operator(user)
     db = SessionLocal()
     try:
-        tokens = [t for t in store.list_tokens(db) if t.is_spendable]
+        tokens = [t for t in store.token_query(db, user) if t.is_spendable]
         token_opts = [{"value": t.token, "client": t.client.name if t.client else "—",
                        "remaining": t.remaining} for t in tokens]
     finally:
@@ -484,6 +491,11 @@ async def admin_users_page(request: Request, error: str = "", ok: str = ""):
     user = require_admin_page(request)
     db = SessionLocal()
     try:
+        clients = [{"id": c.id, "name": c.name} for c in store.list_clients(db)]
+        grants = {}
+        for uid, name in db.query(ClientMembership.user_id, store.Client.name).join(
+                store.Client, store.Client.id == ClientMembership.client_id).order_by(store.Client.name):
+            grants.setdefault(uid, []).append(name)
         users = [{"id": u.id, "username": u.username, "full_name": u.full_name,
                   "role": u.role, "is_active": u.is_active, "created_at": u.created_at,
                   "has_2fa": bool(u.totp_secret), "is_2fa_exempt": bool(u.is_2fa_exempt)}
@@ -491,8 +503,33 @@ async def admin_users_page(request: Request, error: str = "", ok: str = ""):
     finally:
         db.close()
     return _page(request, "admin_users.html", "users", user,
-                 users=users, error=error, ok=ok,
+                 users=users, clients=clients, grants=grants, error=error, ok=ok,
                  min_password_len=MIN_PASSWORD_LEN)
+
+
+@app.post("/admin/memberships")
+async def change_membership(request: Request, user_id: int = Form(...), client_id: int = Form(...),
+                            action: Literal["grant","revoke"] = Form(...), csrf_token: str = Form("")):
+    actor = require_admin_page(request)
+    _check_csrf(request, csrf_token)
+    with SessionLocal() as db:
+        target = db.query(User).filter_by(id=user_id).with_for_update().first()
+        if target is None or db.get(store.Client, client_id) is None:
+            raise HTTPException(404, "Unknown account or organization.")
+        if target.role not in {"customer", "analyst"}:
+            raise HTTPException(422, "Only customers and analysts use organization assignments.")
+        grant = db.get(ClientMembership, (user_id, client_id))
+        if action == "grant" and grant is None:
+            if target.role == "customer" and db.query(ClientMembership).filter_by(user_id=user_id).first():
+                raise HTTPException(409, "Revoke the existing organization before assigning another.")
+            db.add(ClientMembership(user_id=user_id, client_id=client_id))
+        elif action == "revoke" and grant is not None:
+            db.delete(grant)
+        else:
+            return RedirectResponse("/admin/users?ok=No+change", status_code=303)
+        db.add(MembershipEvent(actor_id=actor.id, user_id=user_id, client_id=client_id, action=action))
+        db.commit()
+    return RedirectResponse("/admin/users?ok=Assignment+updated", status_code=303)
 
 
 @app.post("/admin/users")
@@ -502,7 +539,7 @@ async def admin_create_user(request: Request, username: str = Form(...),
     require_admin_page(request)
     _check_csrf(request, csrf_token)
     username = username.strip()
-    role = role if role in ("admin", "analyst") else "analyst"
+    role = role if role in ("admin", "analyst", "customer") else "analyst"
     if not username or len(password) < MIN_PASSWORD_LEN:
         return RedirectResponse(
             f"/admin/users?error=Username+required+and+password+must+be+{MIN_PASSWORD_LEN}%2B+characters",
@@ -747,7 +784,7 @@ def create_scan(request: ScanRequest, http_request: Request, user: User = Depend
     # scan does not freeze the worker's event loop — the gunicorn liveness heartbeat
     # keeps firing and other requests stay served. Declaring this async would block
     # the single UvicornWorker loop for minutes and trip a spurious WORKER TIMEOUT.
-    _validate_token(request.token)  # fail before doing expensive work
+    _validate_token(request.token, user)
 
     try:
         raw_scan = run_scan(request.target)
@@ -770,7 +807,6 @@ def create_scan(request: ScanRequest, http_request: Request, user: User = Depend
     final_report = format_report_data(scan_id, scan_result, cves, llm_analysis)
 
     _finalize_scan(final_report, "pc", request.token, user)
-    reports_db[scan_id] = final_report
     return final_report
 
 
@@ -779,7 +815,7 @@ def create_web_scan(request: WebScanRequest, http_request: Request, user: User =
     _check_csrf(http_request)
     # Sync def on purpose — same reason as /scan: blocking scan work runs in the
     # threadpool so it doesn't stall the event loop / worker heartbeat.
-    _validate_token(request.token)
+    _validate_token(request.token, user)
 
     try:
         raw = run_web_scan(request.url)
@@ -809,7 +845,6 @@ def create_web_scan(request: WebScanRequest, http_request: Request, user: User =
     final_report = format_web_report_data(scan_id, parsed, web_findings, cves, llm_analysis)
 
     _finalize_scan(final_report, "web", request.token, user)
-    web_reports_db[scan_id] = final_report
     return final_report
 
 
@@ -882,34 +917,23 @@ async def get_sync_status(user: User = Depends(require_user_api)):
 async def set_risk_status(req: RiskStatusRequest, request: Request, user: User = Depends(require_user_api)):
     """Mark a finding as accepted (acknowledged / won't-fix / false positive) or reopen it."""
     _check_csrf(request)
-    db_map = reports_db if req.scan_type == "pc" else web_reports_db
-    report = db_map.get(req.scan_id)
-    if report is None:
-        raise HTTPException(status_code=404, detail="Scan not found")
-
-    matched = 0
-    new_status = "accepted" if req.accepted else "open"
-    for f in report.get("findings", []):
-        if str(f.get("cve_id")) == req.cve_id:
-            f["status"] = new_status
-            matched += 1
-    if not matched:
-        raise HTTPException(status_code=404, detail="Finding not found in scan")
-
-    _recount(report)
-
-    # keep the persisted copy in sync with the accept/undo decision
-    db = SessionLocal()
-    try:
-        row = db.query(store.Scan).filter(store.Scan.scan_id == req.scan_id).first()
-        if row:
-            import json
-            row.payload = json.dumps(report)
-            row.critical_count = report["critical_count"]
-            row.high_count = report["high_count"]
-            db.commit()
-    finally:
-        db.close()
+    _require_operator(user)
+    with SessionLocal() as db:
+        row = store.report_query(db, user, req.scan_type).filter_by(scan_id=req.scan_id).with_for_update().first()
+        if row is None:
+            raise HTTPException(404, "Scan not found")
+        report = json.loads(row.payload)
+        matched = [f for f in report.get("findings", []) if str(f.get("cve_id")) == req.cve_id]
+        if not matched:
+            raise HTTPException(404, "Finding not found in scan")
+        new_status = "accepted" if req.accepted else "open"
+        for finding in matched:
+            finding["status"] = new_status
+        _recount(report)
+        row.payload = json.dumps(report)
+        row.critical_count = report["critical_count"]
+        row.high_count = report["high_count"]
+        db.commit()
 
     return {
         "ok": True,
@@ -919,32 +943,41 @@ async def set_risk_status(req: RiskStatusRequest, request: Request, user: User =
     }
 
 
+def _report(user, kind, scan_id):
+    with SessionLocal() as db:
+        row = store.report_query(db, user, kind).filter_by(scan_id=scan_id).first()
+        if row is None:
+            raise HTTPException(404, "Report not found")
+        return json.loads(row.payload)
+
+
+def _reports(user, kind):
+    with SessionLocal() as db:
+        rows = store.report_query(db, user, kind).order_by(store.Scan.created_at)
+        return {"scans": [json.loads(row.payload) for row in rows]}
+
+
 @app.get("/api/scans")
 async def list_scans(user: User = Depends(require_user_api)):
-    return JSONResponse(content={"scans": list(reports_db.values())})
+    return _reports(user, "pc")
 
 
 @app.get("/api/web-scans")
 async def list_web_scans(user: User = Depends(require_user_api)):
-    return JSONResponse(content={"scans": list(web_reports_db.values())})
+    return _reports(user, "web")
 
 
 @app.get("/api/scans-by-client")
 async def api_scans_by_client(user: User = Depends(require_user_api)):
     db = SessionLocal()
     try:
-        return JSONResponse(content={"clients": store.scans_by_client(db)})
+        return JSONResponse(content={"clients": store.scans_by_client(db, user)})
     finally:
         db.close()
 
 
 @app.delete("/api/scans/{scan_id}")
 def delete_scan(scan_id: str, request: Request, user: User = Depends(require_admin_api)):
-    """Hard-delete a scan: evict it from the in-memory cache and the DB. Admin only.
-
-    scan_ids are unique across host and web scans, so we check both caches and the
-    single persisted row. 404 only if the id is unknown everywhere.
-    """
     _check_csrf(request)
 
     db = SessionLocal()
@@ -953,11 +986,7 @@ def delete_scan(scan_id: str, request: Request, user: User = Depends(require_adm
     finally:
         db.close()
 
-    # Never evict a report before its database transaction succeeds.
-    in_cache = reports_db.pop(scan_id, None) is not None
-    in_cache = web_reports_db.pop(scan_id, None) is not None or in_cache
-
-    if not in_cache and not in_db:
+    if not in_db:
         raise HTTPException(status_code=404, detail="Scan not found")
 
     logging.getLogger(__name__).info("Scan deleted scan=%s admin=%s", scan_id, user.id)
@@ -968,28 +997,25 @@ def delete_scan(scan_id: str, request: Request, user: User = Depends(require_adm
 
 @app.get("/report/{scan_id}")
 async def get_report_json(scan_id: str, user: User = Depends(require_user_api)):
-    if scan_id not in reports_db:
-        raise HTTPException(status_code=404, detail="Report not found")
-    return reports_db[scan_id]
+    report = _report(user, "pc", scan_id)
+    return report
 
 
 @app.get("/report/{scan_id}/html", response_class=HTMLResponse)
 async def get_report_html(request: Request, scan_id: str):
     user = require_user(request)
-    if scan_id not in reports_db:
-        raise HTTPException(status_code=404, detail="Report not found")
+    report = _report(user, "pc", scan_id)
     return templates.TemplateResponse(
         request=request, name="report.html",
-        context={"report": reports_db[scan_id], "active": "reports", "user": user},
+        context={"report": report, "active": "reports", "user": user},
     )
 
 
 @app.get("/report/{scan_id}/pdf")
 async def get_report_pdf(request: Request, scan_id: str):
-    require_user(request)
-    if scan_id not in reports_db:
-        raise HTTPException(status_code=404, detail="Report not found")
-    pdf_bytes = build_pdf(reports_db[scan_id], scan_type="host")
+    user = require_user(request)
+    report = _report(user, "pc", scan_id)
+    pdf_bytes = build_pdf(report, scan_type="host")
     return Response(
         content=pdf_bytes, media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="vulnsense-host-{scan_id}.pdf"'},
@@ -998,28 +1024,25 @@ async def get_report_pdf(request: Request, scan_id: str):
 
 @app.get("/web-report/{scan_id}")
 async def get_web_report_json(scan_id: str, user: User = Depends(require_user_api)):
-    if scan_id not in web_reports_db:
-        raise HTTPException(status_code=404, detail="Report not found")
-    return web_reports_db[scan_id]
+    report = _report(user, "web", scan_id)
+    return report
 
 
 @app.get("/web-report/{scan_id}/html", response_class=HTMLResponse)
 async def get_web_report_html(request: Request, scan_id: str):
     user = require_user(request)
-    if scan_id not in web_reports_db:
-        raise HTTPException(status_code=404, detail="Report not found")
+    report = _report(user, "web", scan_id)
     return templates.TemplateResponse(
         request=request, name="web_report.html",
-        context={"report": web_reports_db[scan_id], "active": "reports", "user": user},
+        context={"report": report, "active": "reports", "user": user},
     )
 
 
 @app.get("/web-report/{scan_id}/pdf")
 async def get_web_report_pdf(request: Request, scan_id: str):
-    require_user(request)
-    if scan_id not in web_reports_db:
-        raise HTTPException(status_code=404, detail="Report not found")
-    pdf_bytes = build_pdf(web_reports_db[scan_id], scan_type="web")
+    user = require_user(request)
+    report = _report(user, "web", scan_id)
+    pdf_bytes = build_pdf(report, scan_type="web")
     return Response(
         content=pdf_bytes, media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="vulnsense-web-{scan_id}.pdf"'},

@@ -2,7 +2,9 @@
 {% block title %}Accounts{% endblock %}
 {% block style %}
     .layout { display: grid; grid-template-columns: 340px 1fr; gap: 1.25rem; align-items: start; }
-    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+    .layout > section { min-width: 0; }
+    .account-list { overflow-x: auto; }
+    @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
     .form-group { margin-bottom: 1.05rem; }
     label { display: block; margin-bottom: 0.4rem; font-size: 0.8rem; font-weight: 600; }
     input, select {
@@ -55,15 +57,33 @@
                 <label for="role">Role</label>
                 <select id="role" name="role">
                     <option value="analyst" selected>Analyst — run scans, view reports</option>
+                    <option value="customer">Customer — read reports for one organization</option>
                     <option value="admin">Admin — manage clients, tokens &amp; accounts</option>
                 </select>
             </div>
             <button type="submit" class="btn">Create account</button>
         </form>
+        <h2 class="section">Organization access</h2>
+        <form method="post" action="/admin/memberships">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label for="membership-user">Account</label>
+            <select id="membership-user" name="user_id" required>
+                <option value="">Choose account</option>
+                {% for u in users if u.role in ('customer','analyst') %}<option value="{{ u.id }}">{{ u.username }} ({{ u.role }})</option>{% endfor %}
+            </select>
+            <label for="membership-client">Organization</label>
+            <select id="membership-client" name="client_id" required>
+                <option value="">Choose organization</option>
+                {% for c in clients %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+            </select>
+            <button type="submit" class="btn" name="action" value="grant">Grant access</button>
+            <button type="submit" class="btn" name="action" value="revoke">Revoke access</button>
+        </form>
     </section>
 
     <section class="card card-pad">
         <h2 class="section">All Accounts</h2>
+        <div class="account-list" role="region" aria-label="All accounts" tabindex="0">
         <table>
             <thead><tr><th>User</th><th>Role</th><th>Status</th><th>Two-factor</th><th>Created</th></tr></thead>
             <tbody>
@@ -72,6 +92,7 @@
                     <td>
                         <div style="font-weight:700;color:var(--text)">{{ u.full_name or u.username }}</div>
                         <div class="meta mono" style="font-size:0.76rem;color:var(--text-muted)">{{ u.username }}</div>
+                        <small>{{ 'All organizations' if u.role == 'admin' else (grants.get(u.id, []) | join(', ') or 'No organizations assigned') }}</small>
                     </td>
                     <td><span class="rchip {{ u.role }}">{{ u.role }}</span></td>
                     <td>{% if u.is_active %}<span style="color:var(--accepted);font-weight:700">Active</span>{% else %}<span style="color:var(--text-faint)">Disabled</span>{% endif %}</td>
@@ -97,6 +118,7 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>
     </section>
 </div>
 {% endblock %}

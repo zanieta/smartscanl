@@ -372,6 +372,7 @@
                 </a>
             </div>
 
+            {% if user and user.role in ('admin', 'analyst') %}
             <div class="nav-group-label" style="margin-top:1.1rem;">Scanners</div>
             <div class="nav-group">
                 <a href="/pc" class="nav-item {% if active == 'pc' %}active{% endif %}">
@@ -384,6 +385,7 @@
                 </a>
             </div>
 
+            {% endif %}
             {% if user and user.role == 'admin' %}
             <div class="nav-group-label" style="margin-top:1.1rem;">Administration</div>
             <div class="nav-group">

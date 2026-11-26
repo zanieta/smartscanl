@@ -125,6 +125,22 @@ class Client(Base):
     scans = relationship("Scan", back_populates="client")
 
 
+class ClientMembership(Base):
+    __tablename__ = "client_memberships"
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), primary_key=True)
+
+
+class MembershipEvent(Base):
+    __tablename__ = "membership_events"
+    id = Column(Integer, primary_key=True)
+    actor_id = Column(Integer, nullable=False)
+    user_id = Column(Integer, nullable=False)
+    client_id = Column(Integer, nullable=False)
+    action = Column(String, nullable=False)
+    created_at = Column(String, default=_now, nullable=False)
+
+
 class ScanToken(Base):
     """A floating scan credential issued to a client with an admin-set quota.
 

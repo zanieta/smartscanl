@@ -76,7 +76,7 @@
             {% if accepted %}<span class="badge sev-accepted"><span class="d"></span>Accepted</span>{% else %}<span class="badge sev-{{ sev }}"><span class="d"></span>{{ finding.severity | capitalize }}</span>{% endif %}
             <span class="finding-id">{{ finding.cve_id }}</span>
             <span class="finding-cvss">CVSS {{ finding.cvss }}</span>
-            {% if not network_report %}<button class="accept-btn {% if accepted %}undo{% endif %}" data-cve="{{ finding.cve_id }}" data-accept="{{ 0 if accepted else 1 }}">{{ 'Undo' if accepted else 'Accept Risk' }}</button>{% endif %}
+            {% if not network_report and user.role in ('admin', 'analyst') %}<button class="accept-btn {% if accepted %}undo{% endif %}" data-cve="{{ finding.cve_id }}" data-accept="{{ 0 if accepted else 1 }}">{{ 'Undo' if accepted else 'Accept Risk' }}</button>{% endif %}
         </div>
         <div class="finding-title">{{ finding.description }}</div>
         <div class="finding-body">

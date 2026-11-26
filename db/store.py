@@ -6,10 +6,26 @@ the account/token domain don't bleed into each other.
 import json
 import secrets
 
-from sqlalchemy import func
+from sqlalchemy import func, select, false
 from sqlalchemy.orm import Session
 
-from .models import User, Client, ScanToken, TokenUsage, Scan
+from .models import User, Client, ScanToken, TokenUsage, Scan, ClientMembership
+
+
+def client_scope(column, user):
+    if user.role == "admin":
+        return True
+    if user.role not in {"analyst", "customer"}:
+        return false()
+    return column.in_(select(ClientMembership.client_id).where(ClientMembership.user_id == user.id))
+
+
+def report_query(db, user, kind):
+    return db.query(Scan).filter(Scan.scan_type == kind, client_scope(Scan.client_id, user))
+
+
+def token_query(db, user):
+    return db.query(ScanToken).filter(client_scope(ScanToken.client_id, user))
 
 
 # ===================== users =====================
@@ -143,7 +159,7 @@ def load_payloads(db: Session, scan_type: str) -> dict:
             continue
     return out
 
-def scans_by_client(db: Session) -> list:
+def scans_by_client(db: Session, user=None) -> list:
     """Per-client rollup for the dashboard: counts + severity totals + last scan."""
     rows = (db.query(
                 Client.id, Client.name,
@@ -153,6 +169,7 @@ def scans_by_client(db: Session) -> list:
                 func.max(Scan.created_at).label("last_scanned"),
             )
             .outerjoin(Scan, Scan.client_id == Client.id)
+            .filter(client_scope(Client.id, user) if user is not None else True)
             .group_by(Client.id, Client.name)
             .order_by(Client.name.asc())
             .all())

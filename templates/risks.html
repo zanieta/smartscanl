@@ -82,7 +82,8 @@ function render() {
         const meter = accepted
             ? `<span class="badge sev-accepted"><span class="d"></span>Accepted</span>`
             : VulnSense.threatBars(k);
-        const btn = accepted
+        const canEdit = {{ (user.role in ('admin', 'analyst')) | tojson }};
+        const btn = !canEdit ? '' : accepted
             ? `<button class="act-btn undo" data-i="${i}" data-accept="0">Undo</button>`
             : `<button class="act-btn" data-i="${i}" data-accept="1">Accept Risk</button>`;
         return `<tr class="${accepted ? 'is-accepted' : ''}">
