@@ -142,6 +142,32 @@ def test_ubuntu_evidence_scope(tenant_env):
     assert not client.get("/api/assets").json()["assets"]
 
 
+def test_ubuntu_retest_chain(tenant_env):
+    from db import store
+    from scanner.ubuntu_evidence import PROFILE
+    client,user,local,_=tenant_env
+    def path(*ids):
+        return "/api/ubuntu-retest?"+"&".join(f"scan_id={i}" for i in ids)
+    with local() as db:
+        for i,(org,machine,value) in enumerate([(1,"b","0"),(1,"b",None),(1,"b","1"),(1,"b","0"),
+                                                 (2,"b","1"),(1,"c","1")],1):
+            store.persist_scan(db,{"scan_id":f"s{i}","created_at":f"2026-01-0{i}T00:00:00Z",
+                "host":"ubuntu","profile":PROFILE,"installation":machine*64,
+                "controls":[{"id":"fs.protected_symlinks","expected":"1","observed":value,
+                             "status":{"0":"deviation","1":"pass"}.get(value,"not_assessed")}]},
+                "ubuntu",client_id=org)
+    chain=client.get(path("s1","s2","s3","s4"))
+    assert chain.status_code==200
+    control,missing=chain.json()["controls"]
+    assert [s["outcome"] for s in control["history"]]==["open","not_verified","verified_resolved","reopened"]
+    assert missing["outcome"]=="not_verified"
+    assert client.get(path("s1","s5")).status_code==404
+    for ids in [("s1","s6"),("s3","s1"),("s1","s1")]:
+        assert client.get(path(*ids)).status_code==409
+    user.id,user.role=1,"admin"
+    assert client.get(path("s1","s5")).status_code==409
+
+
 def test_admin_grants_and_writes(tenant_env):
     from db.models import MembershipEvent, Scan
     client,user,local,main=tenant_env

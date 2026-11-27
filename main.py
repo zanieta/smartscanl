@@ -1038,6 +1038,18 @@ def ubuntu_review(scan_id: str, user: User = Depends(require_user_api)):
         return _ubuntu_review(db, user, scan_id)
 
 
+@app.get("/api/ubuntu-retest")
+def ubuntu_retest(scan_id: list[str] = Query(..., min_length=2, max_length=16),
+                  user: User = Depends(require_user_api)):
+    from reports.ubuntu_review import retest
+    with SessionLocal() as db:
+        reviews = [_ubuntu_review(db, user, sid) for sid in scan_id]
+    try:
+        return retest(reviews)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
 @app.get("/api/scans")
 async def list_scans(user: User = Depends(require_user_api)):
     return _reports(user, "pc")
