@@ -30,6 +30,7 @@ python-dotenv==1.2.2
 
 # --- Reporting ---
 reportlab==5.0.0
+XlsxWriter==3.2.9
 
 # --- Auth / 2FA ---
 pyotp==2.10.0

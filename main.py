@@ -1050,6 +1050,16 @@ def ubuntu_retest(scan_id: list[str] = Query(..., min_length=2, max_length=16),
         raise HTTPException(409, str(exc)) from exc
 
 
+@app.get("/api/ubuntu-evidence/{scan_id}/export/{fmt}")
+def ubuntu_export(scan_id: str, fmt: Literal["csv","json","pdf","xlsx"], user: User = Depends(require_user_api)):
+    from reports.ubuntu_exports import TYPES, findings_export
+    with SessionLocal() as db:
+        review = _ubuntu_review(db, user, scan_id)
+    return Response(findings_export(review, fmt), media_type=TYPES[fmt],
+                    headers={"Content-Disposition": f'attachment; filename="ubuntu-findings.{fmt}"',
+                             "X-Content-Type-Options": "nosniff"})
+
+
 @app.get("/api/scans")
 async def list_scans(user: User = Depends(require_user_api)):
     return _reports(user, "pc")

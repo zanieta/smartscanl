@@ -162,6 +162,22 @@ def test_ubuntu_retest_chain(tenant_env):
     assert [s["outcome"] for s in control["history"]]==["open","not_verified","verified_resolved","reopened"]
     assert missing["outcome"]=="not_verified"
     assert client.get(path("s1","s5")).status_code==404
+    from io import BytesIO
+    from zipfile import ZipFile
+    for fmt in ("json","csv","xlsx","pdf"):
+        url=f"/api/ubuntu-evidence/s1/export/{fmt}"
+        response=client.get(url)
+        assert response.status_code==200 and "no-store" in response.headers["cache-control"]
+        assert client.get(url.replace("/s1/","/s5/")).status_code==404
+        if fmt=="xlsx":
+            with ZipFile(BytesIO(response.content)) as z:
+                strings=z.read("xl/sharedStrings.xml")
+                assert b"fs.protected_symlinks" in strings and b"hardlinks" not in strings
+        elif fmt=="pdf":
+            assert response.content.startswith(b"%PDF")
+        else:
+            assert "fs.protected_symlinks" in response.text and "hardlinks" not in response.text
+    assert client.get("/api/ubuntu-evidence/s3/export/json").json()["findings"]==[]
     for ids in [("s1","s6"),("s3","s1"),("s1","s1")]:
         assert client.get(path(*ids)).status_code==409
     user.id,user.role=1,"admin"
