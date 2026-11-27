@@ -33,3 +33,17 @@ def test_reject_other_os(monkeypatch):
     monkeypatch.setattr(evidence.platform, "system", lambda: "Other")
     with pytest.raises(ValueError, match="Ubuntu"):
         evidence.collect()
+
+
+def test_review_never_equates_missing_with_pass():
+    from reports.ubuntu_review import review
+    sample = {"id":"fs.protected_symlinks", "expected":"1", "observed":"0", "status":"deviation"}
+    record = {"scan_id":"a","profile":evidence.PROFILE,"host":"ubuntu","installation":"b"*64,"controls":[sample]}
+    a = review(record, 1)
+    assert a["counts"] == {"open":1,"not_assessed":1,"pass":0}
+    case = a["checks"][0]["case_id"]
+    assert case and review({**record,"scan_id":"b"},1)["checks"][0]["case_id"] == case
+    assert review(record,2)["checks"][0]["case_id"] != case
+    assert review({**record,"installation":None},1)["checks"][0]["case_id"] is None
+    for controls in ([sample,sample], [{**sample,"status":"pass"}], None, []):
+        assert review({**record,"controls":controls},1)["counts"]["not_assessed"] == 2

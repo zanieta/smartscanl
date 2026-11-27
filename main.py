@@ -1021,6 +1021,23 @@ def ubuntu_evidence(scan_id: str, user: User = Depends(require_user_api)):
     return _report(user, "ubuntu", scan_id)
 
 
+def _ubuntu_review(db, user, scan_id):
+    from reports.ubuntu_review import review
+    row = store.report_query(db, user, "ubuntu").filter_by(scan_id=scan_id).first()
+    if not row:
+        raise HTTPException(404, "Report not found")
+    try:
+        return review(json.loads(row.payload), row.client_id)
+    except ValueError as exc:
+        raise HTTPException(409, "Cannot interpret assessment profile") from exc
+
+
+@app.get("/api/ubuntu-evidence/{scan_id}/review")
+def ubuntu_review(scan_id: str, user: User = Depends(require_user_api)):
+    with SessionLocal() as db:
+        return _ubuntu_review(db, user, scan_id)
+
+
 @app.get("/api/scans")
 async def list_scans(user: User = Depends(require_user_api)):
     return _reports(user, "pc")
