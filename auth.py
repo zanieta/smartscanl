@@ -262,7 +262,9 @@ def seed_admin() -> None:
         if db.query(User).count() > 0:
             return
         username = os.getenv("ADMIN_USERNAME", "admin")
-        password = os.getenv("ADMIN_PASSWORD", "admin")
+        password = os.getenv("ADMIN_PASSWORD", "")
+        if len(password.strip()) < MIN_PASSWORD_LEN:
+            raise RuntimeError("Configure ADMIN_PASSWORD before first startup.")
         admin = User(
             username=username,
             full_name="Administrator",
@@ -272,8 +274,7 @@ def seed_admin() -> None:
         )
         db.add(admin)
         db.commit()
-        print(f"[auth] Seeded initial admin '{username}'. "
-              f"{'CHANGE THE DEFAULT PASSWORD in production.' if password == 'admin' else ''}")
+        print("[auth] Seeded initial administrator.")
     finally:
         db.close()
 
@@ -284,18 +285,16 @@ BREAKGLASS_USERNAME = os.getenv("BREAKGLASS_USERNAME", "dewebnetadmin")
 def seed_breakglass() -> None:
     """Ensure the 2FA-exempt break-glass admin exists.
 
-    Password comes from BREAKGLASS_PASSWORD (.env, gitignored). If unset we mint a
-    random one and print it once — a weak default nobody rotates is worse than a
-    strong one you must go read out of the log. `.env` stays the source of truth:
-    change the value there and the password is updated on the next restart.
+    An explicitly configured secret enables provisioning. If absent, leave all
+    accounts untouched. Never generate or disclose a recovery credential in logs.
 
     Call this AFTER seed_admin(), which only seeds when the users table is empty.
     """
     password = os.getenv("BREAKGLASS_PASSWORD")
-    generated = False
     if not password:
-        password = secrets.token_urlsafe(18)
-        generated = True
+        return
+    if len(password.strip()) < MIN_PASSWORD_LEN:
+        raise RuntimeError("Configure a stronger BREAKGLASS_PASSWORD before startup.")
 
     db = SessionLocal()
     try:
@@ -310,30 +309,18 @@ def seed_breakglass() -> None:
                 is_2fa_exempt=True,
             ))
             db.commit()
-            # flush=True: under gunicorn+systemd stdout is block-buffered, and a
-            # generated password printed into a buffer is a password lost forever.
-            print(f"[auth] Seeded break-glass admin '{BREAKGLASS_USERNAME}' (2FA-exempt).",
-                  flush=True)
-            if generated:
-                print(f"[auth] BREAKGLASS_PASSWORD was unset. Generated: {password}\n"
-                      f"[auth] Save it now — it will not be shown again.", flush=True)
+            print("[auth] Seeded configured emergency administrator.", flush=True)
             return
 
-        # Account exists. Keep .env authoritative for the password, and make sure a
-        # DB edited by hand can't quietly strip the exemption.
-        changed = []
-        if not generated and not verify_password(password, user.password_hash):
-            user.password_hash = hash_password(password)
-            changed.append("password")
-        if not user.is_2fa_exempt:
-            user.is_2fa_exempt = True
-            changed.append("2FA exemption")
+        if user.role != "admin" or not user.is_2fa_exempt:
+            raise RuntimeError("Emergency account name conflicts with an ordinary account; review configuration.")
+
+        # Explicit deactivation must survive service restarts.
         if not user.is_active:
-            user.is_active = True
-            changed.append("active flag")
-        if changed:
+            return
+        if not verify_password(password, user.password_hash):
+            user.password_hash = hash_password(password)
             db.commit()
-            print(f"[auth] Break-glass admin '{BREAKGLASS_USERNAME}': "
-                  f"restored {', '.join(changed)} from environment.", flush=True)
+            print("[auth] Updated configured emergency password.", flush=True)
     finally:
         db.close()

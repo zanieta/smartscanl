@@ -15,7 +15,7 @@ cleanup() {
 trap cleanup EXIT
 unset PGSERVICE PGOPTIONS DATABASE_URL PGPASSWORD
 export PGHOST="$root" PGPORT=25439 PGUSER="$(id -un)"
-"$pgbin/initdb" -D "$root/pg" --no-locale --encoding=UTF8 >/dev/null
+"$pgbin/initdb" -D "$root/pg" --no-locale --encoding=UTF8 --auth-local=peer --auth-host=reject >/dev/null
 "$pgbin/pg_ctl" -D "$root/pg" -l "$root/server.log" -o "-k $root -p $PGPORT -c listen_addresses='' -c unix_socket_permissions=0700" -w start >/dev/null
 createdb original
 createdb restored
@@ -51,6 +51,17 @@ with Session(engine) as db:
 PY
 [[ "$before" == "$(fingerprint restored)" ]]
 echo "PASS: isolated dump/restore, additive upgrade, repeated backfill, original report checksum unchanged"
+
+# Record a real read-only assessment into the disposable organization, then
+# authenticate against its restored copy. Never inherit the installed .env.
+createdb ubuntu_readback
+export PYTHON_DOTENV_DISABLED=1
+evidence_url="postgresql+psycopg:///restored?host=$PGHOST&port=$PGPORT"
+observation=$(DATABASE_URL="$evidence_url" "$python_bin" -m scripts.ubuntu_evidence --record-for-client 1)
+pg_dump -Fc -f "$root/observations.dump" restored
+pg_restore --exit-on-error --single-transaction -d ubuntu_readback "$root/observations.dump"
+DATABASE_URL="postgresql+psycopg:///ubuntu_readback?host=$PGHOST&port=$PGPORT" \
+    "$python_bin" -m scripts.rehearse_ubuntu_readback "$observation"
 
 # The source suite has fixtures which rebuild tables. Restrict them to a new DB
 # in this private cluster, never a developer or customer database.

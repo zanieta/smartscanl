@@ -44,6 +44,43 @@ def test_login_logout_and_session_binding(ctx):
     db.assert_not_called()
 
 
+def test_missing_startup_secrets_cannot_provision_accounts(ctx,monkeypatch,capsys):
+    import auth
+    db=Mock()
+    monkeypatch.setattr(auth,"SessionLocal",lambda:db)
+    db.query.return_value.count.return_value=0
+    monkeypatch.delenv("ADMIN_PASSWORD",raising=False)
+    monkeypatch.delenv("BREAKGLASS_PASSWORD",raising=False)
+    with pytest.raises(RuntimeError,match="ADMIN_PASSWORD"):
+        auth.seed_admin()
+    auth.seed_breakglass()
+    db.add.assert_not_called()
+    db.commit.assert_not_called()
+    assert not capsys.readouterr().out
+
+
+def test_emergency_secret_never_logged_or_applied_to_an_ordinary_account(ctx,monkeypatch,capsys):
+    import auth
+    db=Mock()
+    monkeypatch.setattr(auth,"SessionLocal",lambda:db)
+    monkeypatch.setattr(auth,"hash_password",lambda _: "fixture-hash")
+    monkeypatch.setenv("BREAKGLASS_PASSWORD","fixture-only-secret")
+    lookup=db.query.return_value.filter.return_value.first
+    lookup.return_value=None
+    auth.seed_breakglass()
+    assert db.add.call_args.args[0].password_hash=="fixture-hash"
+    assert "fixture-only-secret" not in capsys.readouterr().out
+    db.reset_mock()
+    lookup.return_value=SimpleNamespace(role="customer",is_2fa_exempt=False)
+    with pytest.raises(RuntimeError,match="conflicts"):
+        auth.seed_breakglass()
+    db.commit.assert_not_called()
+    lookup.return_value=SimpleNamespace(role="admin",is_2fa_exempt=True,is_active=False)
+    auth.seed_breakglass()
+    assert not lookup.return_value.is_active
+    db.commit.assert_not_called()
+
+
 @pytest.mark.parametrize(("method","path","body"),[
     ("POST","/api/discovery",None),
     ("POST","/api/network-scans",{"networks":["192.0.2.0/30"],"approval":""}),

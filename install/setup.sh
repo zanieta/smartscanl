@@ -81,8 +81,8 @@ prompt NVD_API_KEY         "NVD API key (blank = skip CVE data for now): "
 prompt ADMIN_PASSWORD      "Password for the initial 'admin' account: " silent
 prompt BREAKGLASS_PASSWORD "Password for the break-glass super-admin: " silent
 [ -n "${APP_HOST}" ]        || die "APP_HOST is required (nginx server_name)."
-[ -n "${ADMIN_PASSWORD}" ]  || die "ADMIN_PASSWORD is required."
-[ -n "${BREAKGLASS_PASSWORD}" ] || die "BREAKGLASS_PASSWORD is required."
+[[ ${#ADMIN_PASSWORD} -ge 8 ]] || die "Use an initial administrator password of at least 8 characters."
+[[ ${#BREAKGLASS_PASSWORD} -ge 8 ]] || die "Use an emergency administrator password of at least 8 characters."
 ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
 # RUN_FULL_SYNC is deliberately NOT defaulted here (unlike ANTHROPIC_API_KEY
 # above): defaulting it to "" would erase the unset-vs-set-empty distinction

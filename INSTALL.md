@@ -282,3 +282,9 @@ Identification and approved default-login checks are separate, disabled-by-defau
 admin actions. See `DEVICE-AUDIT.md` in the Linux release (source guide:
 `docs/device-audit-rc8.md`).
 No verified vendor profiles are bundled, and upgrading does not enable login checks.
+
+## Ubuntu milestone upgrade note
+
+The milestone branches are development checkpoints, not production release tags. Before upgrading, check that the configured emergency password is at least eight non-padding characters long and its configured username refers to the existing emergency administrator (not a regular user or ordinary administrator). Change weak values in the protected environment file before restarting. Fresh installs require a configured administrator password; there is no built-in initial password. If the emergency password is absent, startup no longer creates a password or prints a credential. Removing the setting does **not** disable an existing emergency account. Rotate recovery credentials if old service logs were accessible.
+
+See [Ubuntu evidence and exports](UBUNTU-EVIDENCE.md) for the operator workflow. The local restore rehearsal uses a disposable PostgreSQL cluster, not the configured customer database. It does not rehearse Nginx/TLS, a full fresh install or a remote upgrade.
