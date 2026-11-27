@@ -3,6 +3,8 @@
 set -euo pipefail
 if [[ $(id -u) == 0 ]]; then echo "Run as an unprivileged OS user." >&2; exit 2; fi
 cd "$(dirname "$0")/.."
+if [[ ! -f db/models.py && -f ../db/models.py ]]; then cd ..; fi
+[[ -f db/models.py ]] || { echo "Application checkout not found." >&2; exit 2; }
 python_bin="${PYTHON_BIN:-python3}"
 pgbin="$(pg_config --bindir)"
 root="$(mktemp -d /tmp/security360-rehearsal.XXXXXXXX)"
