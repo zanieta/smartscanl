@@ -130,6 +130,18 @@ def test_scoped_reads_and_exports(tenant_env,kind,path,listing):
                     assert response.content.startswith(b"%PDF")
 
 
+def test_ubuntu_evidence_scope(tenant_env):
+    from db import store
+    client,user,local,_=tenant_env
+    with local() as db:
+        store.persist_scan(db, {"scan_id":"ubuntu-1","host":"fixture-ubuntu","controls":[]}, "ubuntu",client_id=1)
+    assert client.get("/api/ubuntu-evidence/ubuntu-1").json()["host"]=="fixture-ubuntu"
+    assert any(a["kind"]=="ubuntu" for a in client.get("/api/assets").json()["assets"])
+    user.id=3
+    assert client.get("/api/ubuntu-evidence/ubuntu-1").status_code==404
+    assert not client.get("/api/assets").json()["assets"]
+
+
 def test_admin_grants_and_writes(tenant_env):
     from db.models import MembershipEvent, Scan
     client,user,local,main=tenant_env

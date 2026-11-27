@@ -41,7 +41,7 @@ def identity(kind, raw):
 
 def project(db, scan, report):
     kind = scan.scan_type
-    if kind not in {"pc","web"} or not isinstance(report,dict):
+    if kind not in {"pc","web","ubuntu"} or not isinstance(report,dict):
         return False
     key = identity(kind,report.get("url" if kind=="web" else "host") or scan.target)
     if key is None:

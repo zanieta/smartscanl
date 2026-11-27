@@ -1016,6 +1016,11 @@ def asset_history(asset_id: str, offset: int = Query(0,ge=0), limit: int = Query
                 "next_offset":offset+limit if len(rows)>limit else None}
 
 
+@app.get("/api/ubuntu-evidence/{scan_id}")
+def ubuntu_evidence(scan_id: str, user: User = Depends(require_user_api)):
+    return _report(user, "ubuntu", scan_id)
+
+
 @app.get("/api/scans")
 async def list_scans(user: User = Depends(require_user_api)):
     return _reports(user, "pc")
