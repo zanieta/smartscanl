@@ -119,7 +119,7 @@ def persist_scan(db: Session, report: dict, scan_type: str,
                  target: str = None) -> None:
     """Save a finished scan. The full report dict goes in payload so the
     report/PDF renderers can be hydrated back verbatim."""
-    db.add(Scan(
+    row = Scan(
         scan_id=report["scan_id"],
         scan_type=scan_type,
         client_id=client_id,
@@ -131,7 +131,11 @@ def persist_scan(db: Session, report: dict, scan_type: str,
         cves_found=report.get("cves_found", 0),
         payload=json.dumps(report),
         created_at=report.get("created_at"),
-    ))
+    )
+    db.add(row)
+    db.flush()
+    from .inventory import project
+    project(db, row, report)
     db.commit()
 
 def delete_scan(db: Session, scan_id: str) -> bool:

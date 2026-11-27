@@ -95,6 +95,8 @@ def _upsert_cve(db: Session, cve_data: dict, added: int, updated: int) -> tuple[
 
     published = cve_data.get("published")
     last_modified = cve_data.get("lastModified")
+    from .intelligence import nvd_context
+    nvd_context(db, cve_data)
 
     # Check if exists
     existing_cve = db.query(CVE).filter(CVE.cve_id == cve_id).first()

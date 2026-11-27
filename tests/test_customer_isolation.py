@@ -68,6 +68,51 @@ def tenant_env(monkeypatch):
     engine.dispose()
 
 
+def test_inventory_history_and_reference_snapshots(tenant_env):
+    from io import StringIO
+    from db import store
+    from db.models import CVEContext
+    from scripts.backfill_assets import backfill
+    from scripts.import_intelligence import replace
+    from sync.intelligence import nvd_context
+    client,user,local,_=tenant_env
+    cve="CVE-2099-1111"
+    with local() as db:
+        for sid,org in [("s1",1),("s2",1),("s3",2)]:
+            store.persist_scan(db,{"scan_id":sid,"url":"https://name:password@EXAMPLE.org:443/path?secret=x",
+                "findings":[{"cve_id":cve,"severity":"High","detected_version":"1.2"},
+                            {"cve_id":"uncertain","match_status":"uncertain"}]}, "web",client_id=org)
+        backfill(db)
+        backfill(db)
+        record=dict(id=cve,lastModified="2026-01-01T00:00:00",references=[{"url":"https://vendor.example/advisory","tags":["Vendor Advisory"]}],
+                    weaknesses=[{"description":[{"value":"CWE-123"}]}])
+        nvd_context(db,record)
+        for _ in range(2):
+            assert replace(db,"EPSS",StringIO("#model_version:v1,score_date:2026-01-02T00:00:00Z\ncve,epss,percentile\n"+cve+",0.15,0.9\n"))==1
+            assert replace(db,"KEV",StringIO(json.dumps({"dateReleased":"2026-01-02","count":1,"vulnerabilities":[{"cveID":cve,"dateAdded":"2026-01-01"}]})))==1
+        db.commit()
+        with pytest.raises(ValueError):
+            replace(db,"EPSS",StringIO("cve,epss,date\n"+cve+",nan,2026-01-03\n"))
+        db.rollback()
+        assert db.query(CVEContext).filter_by(source="EPSS").count()==1
+    assets=client.get("/api/assets").json()["assets"]
+    a=next(v for v in assets if v["identity"]=="https://example.org")
+    assert a["reports"]==2 and a["exposure"]=="unknown"
+    history="/api/assets/"+a["id"]+"/history"
+    obj=client.get(history).json()
+    assert {r["scan_id"] for r in obj["observations"]}=={"s1","s2"}
+    assert {v["source"] for v in obj["current_intelligence"][cve]}=={"KEV","EPSS","NVD"}
+    assert all(r["uncertain_count"]==1 and len(r["findings"])==1 for r in obj["observations"])
+    labels=history.replace("history","labels")
+    assert client.put(labels,json={}).status_code==403
+    user.id,user.role=4,"analyst"
+    assert client.put(labels,json={"owner":"IT","tags":["Edge","Edge"],"exposure":"external"}).status_code==200
+    user.id,user.role=3,"customer"
+    assert client.get(history).status_code==404
+    own=next(a for a in client.get("/api/assets").json()["assets"] if a["identity"]=="https://example.org")
+    assert own["reports"]==1 and not own["tags"]
+
+
 @pytest.mark.parametrize(("kind","path","listing"),[("pc","report","scans"),("web","web-report","web-scans")])
 def test_scoped_reads_and_exports(tenant_env,kind,path,listing):
     client,user,_,_=tenant_env

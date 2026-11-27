@@ -7,7 +7,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request, Depends, Form, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Request, Depends, Form, BackgroundTasks, Query
 from fastapi.responses import HTMLResponse, JSONResponse, Response, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -27,6 +27,9 @@ from db.session import SessionLocal, init_db
 from db.queries import find_cves, os_to_target
 from db.models import SyncLog, User, DiscoveryRun, DeviceAudit, NetworkScanRun, ClientMembership, MembershipEvent
 from db import store
+from db import inventory
+from db.models import Asset, AssetObservation, CVEContext
+from sync.intelligence import contextualize, CVE_ID
 from sync.nvd_sync import sync_cves
 
 import auth
@@ -955,6 +958,62 @@ def _reports(user, kind):
     with SessionLocal() as db:
         rows = store.report_query(db, user, kind).order_by(store.Scan.created_at)
         return {"scans": [json.loads(row.payload) for row in rows]}
+
+
+class AssetLabels(BaseModel):
+    owner: str | None = Field(default=None, max_length=120)
+    tags: list[str] = Field(default_factory=list,max_length=20)
+    exposure: Literal["unknown","internal","external"] = "unknown"
+
+
+@app.get("/api/assets")
+def asset_inventory(after: str = Query("",max_length=64), limit: int = Query(50,ge=1,le=200),
+                    user: User = Depends(require_user_api)):
+    with SessionLocal() as db:
+        return inventory.listed(db,user,after,limit)
+
+
+def _scoped_asset(db,user,asset_id):
+    asset=db.query(Asset).filter(Asset.id==asset_id,store.client_scope(Asset.client_id,user),
+                                 db.query(AssetObservation).filter_by(asset_id=asset_id).exists()).first()
+    if not asset:
+        raise HTTPException(404,"Asset not found")
+    return asset
+
+
+@app.put("/api/assets/{asset_id}/labels")
+def label_asset(asset_id: str, labels: AssetLabels, request: Request, user: User = Depends(require_user_api)):
+    _require_operator(user)
+    _check_csrf(request)
+    tags=sorted({v.strip() for v in labels.tags if v.strip()})
+    if any(len(v)>48 for v in tags):
+        raise HTTPException(422,"Tags must be 48 characters or shorter.")
+    with SessionLocal() as db:
+        asset=_scoped_asset(db,user,asset_id)
+        asset.owner=(labels.owner or "").strip() or None
+        asset.tags=tags
+        asset.exposure=labels.exposure
+        db.commit()
+    return {"ok":True}
+
+
+@app.get("/api/assets/{asset_id}/history")
+def asset_history(asset_id: str, offset: int = Query(0,ge=0), limit: int = Query(25,ge=1,le=100),
+                  user: User = Depends(require_user_api)):
+    with SessionLocal() as db:
+        asset=_scoped_asset(db,user,asset_id)
+        rows=(db.query(AssetObservation).filter_by(asset_id=asset.id)
+              .order_by(AssetObservation.seen_at.desc().nullslast(),AssetObservation.scan_id)
+              .offset(offset).limit(limit+1).all())
+        ids={f["cve_id"] for r in rows[:limit] for f in r.findings if CVE_ID.fullmatch(str(f["cve_id"]))}
+        context={}
+        if ids:
+            for entry in db.query(CVEContext).filter(CVEContext.cve_id.in_(ids)):
+                context.setdefault(entry.cve_id,[]).append(contextualize(entry))
+        return {"identity":asset.identity,"kind":asset.kind,"current_intelligence":context,
+                "observations":[{"scan_id":r.scan_id,"observed_at":r.seen_at,"services":r.services,
+                                 "findings":r.findings,"uncertain_count":r.uncertain_count} for r in rows[:limit]],
+                "next_offset":offset+limit if len(rows)>limit else None}
 
 
 @app.get("/api/scans")

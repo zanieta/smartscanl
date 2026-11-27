@@ -207,3 +207,32 @@ class Scan(Base):
     created_at = Column(String, default=_now, index=True)
 
     client = relationship("Client", back_populates="scans")
+
+
+class Asset(Base):
+    __tablename__ = "assets"
+    id = Column(String(64), primary_key=True)
+    client_id = Column(Integer, ForeignKey("clients.id"), index=True)
+    identity = Column(String, nullable=False)
+    kind = Column(String, nullable=False)
+    owner = Column(String, nullable=True)
+    tags = Column(JSON, nullable=False, default=list)
+    exposure = Column(String, nullable=False, default="unknown")
+
+
+class AssetObservation(Base):
+    __tablename__ = "asset_observations"
+    scan_id = Column(String, ForeignKey("scans.scan_id", ondelete="CASCADE"), primary_key=True)
+    asset_id = Column(String(64), ForeignKey("assets.id"), nullable=False, index=True)
+    seen_at = Column(String, index=True)
+    services = Column(JSON, nullable=False)
+    findings = Column(JSON, nullable=False)
+    uncertain_count = Column(Integer, nullable=False)
+
+
+class CVEContext(Base):
+    __tablename__ = "cve_context"
+    cve_id = Column(String, primary_key=True)
+    source = Column(String, primary_key=True)
+    as_of = Column(String, nullable=False)
+    details = Column(JSON, nullable=False)
