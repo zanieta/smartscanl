@@ -7,6 +7,7 @@ import platform
 import re
 import subprocess
 from uuid import uuid4
+from scanner.ubuntu_updates import local_updates
 
 
 PROFILE = "ubuntu-link-protection-v1"
@@ -50,7 +51,8 @@ def package_versions():
 
 
 def collect():
-    if platform.system() != "Linux" or platform.freedesktop_os_release().get("ID") != "ubuntu":
+    os_info = platform.freedesktop_os_release() if platform.system() == "Linux" else {}
+    if os_info.get("ID") != "ubuntu":
         raise ValueError("This collector requires Ubuntu.")
     controls = []
     for name in CONTROLS:
@@ -61,6 +63,9 @@ def collect():
     packages = package_versions()
     return {"scan_id": str(uuid4()), "created_at": datetime.now(timezone.utc).isoformat(),
             "profile": PROFILE, "host": platform.node(), "installation": _installation(),
+            "os": {"id":"ubuntu","version":os_info.get("VERSION_ID"),"codename":os_info.get("VERSION_CODENAME"),
+                   "running_kernel":platform.release(), "architecture":platform.machine()},
+            "security_updates":local_updates(),
             "summary": f"Ubuntu local baseline: {sum(c['status']=='deviation' for c in controls)} deviations; "
                        f"{sum(c['status']=='not_assessed' for c in controls)} controls not assessed.",
             "controls": controls, "packages": [{"name": p, "version": packages.get(p),

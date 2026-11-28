@@ -12,6 +12,15 @@ Use `GET /api/ubuntu-evidence/{scan_id}/review` for normalized control observati
 
 ### Manual remediation and retest
 
+The raw evidence also records the Ubuntu version, codename, running kernel and architecture. Its
+`security_updates` section compares installed packages with newer versions in trusted standard
+Ubuntu security indexes already on disk, using Debian version ordering. It does not contact a
+repository, install updates, evaluate Ubuntu Pro/ESM, or infer a CVE. Package holds and pinning
+can affect whether an update is installable. Results older than seven days are labeled stale.
+A missing index, missing python3-apt, or timeout means **not assessed**, not zero updates. Up to
+200 package records are returned along with the full count. These observations are separate from
+the two-control baseline and are not included in its verified remediation or finding-only exports.
+
 For a deviation, the Ubuntu administrator should confirm the running setting on the system that owns the kernel, note the current value and where persistent policy is managed, and back up that configuration. Test the expected value of 1 in staging: applications relying on legacy link handling in shared writable directories may behave differently. Apply the change using your approved configuration system in a change window. If a workload breaks, restore the saved policy and previous running value via the same system and document the exception. The collector never changes kernel settings.
 
 Record a fresh observation, then request `GET /api/ubuntu-retest?scan_id=BASELINE&scan_id=RETEST` in your authenticated session. Supply 2–16 IDs in chronological order. An observed deviation followed by a measured pass verifies resolution of **that control at that time**. A later deviation after resolution is marked reopened if that evidence is included. A partial observation cannot verify resolution. The result includes the supporting scan IDs; it does not change tickets, establish independent verification or describe observations omitted from the comparison.
