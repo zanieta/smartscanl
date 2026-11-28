@@ -15,6 +15,8 @@ die() { printf '\n\033[1;31m[ollama] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 if [ "$(id -u)" -ne 0 ]; then
     die "Please run as root (sudo ./install-ollama.sh)."
 fi
+# Provisioners such as cloud-init may omit HOME; the Ollama CLI requires it.
+export HOME="${HOME:-/root}"
 
 # 1. Engine ---------------------------------------------------------------------
 if command -v ollama >/dev/null 2>&1; then

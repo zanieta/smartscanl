@@ -70,7 +70,9 @@ tar -czf "$BACKUP/application.tar.gz" -C "$APP" .
 tar -czf "$BACKUP/system-config.tar.gz" -C / etc/nginx etc/systemd/system
 # Parse dotenv as data, never execute settings as shell code or expose passwords
 # in process arguments. pg_dump uses the exact configured database, not a guess.
-"$APP/.venv/bin/python" - "$APP/.env" "$BACKUP/database.dump" <<'PY'
+# The installed virtualenv belongs to the application user. Never execute it
+# as root. The parent shell opens the dump inside the private recovery directory.
+runuser -u vulnsense -- "$APP/.venv/bin/python" -I - "$APP/.env" > "$BACKUP/database.dump" <<'PY'
 import os
 import subprocess
 import sys
@@ -91,7 +93,7 @@ for key, value in url.query.items():
     if key not in {"sslmode", "sslrootcert", "sslcert", "sslkey", "connect_timeout"}:
         raise SystemExit(f"Unsupported database option for backup: {key}")
     env["PG" + key.upper()] = str(value)
-subprocess.run(["pg_dump", "--no-password", "--format=custom", "--file", sys.argv[2]],
+subprocess.run(["/usr/bin/pg_dump", "--no-password", "--format=custom"],
                env=env, check=True)
 PY
 pg_restore --list "$BACKUP/database.dump" >/dev/null
